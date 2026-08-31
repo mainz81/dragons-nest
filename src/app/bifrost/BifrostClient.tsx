@@ -13,11 +13,24 @@ type HuntResponse = {
   guard?: string;
   warnings?: string[];
   discovery?: {
-    source: string;
-    queryCount: number;
-    successfulQueries: number;
-    candidateCount: number;
-    warnings: string[];
+    source: "HUGINN";
+    combinedCandidateCount: number;
+    crossref: {
+      status: "AVAILABLE" | "UNAVAILABLE";
+      queryCount: number;
+      successfulQueries: number;
+      candidateCount: number;
+    };
+    openAlex: {
+      status: "AVAILABLE" | "UNAVAILABLE";
+      candidateCount: number;
+    };
+  };
+  waterloo?: {
+    routing: string;
+    holdingsVerification: string;
+    alumniRemoteScope: string;
+    credentialHandling: string;
   };
   gap?: {
     mimirContext: "AVAILABLE" | "UNAVAILABLE";
@@ -59,6 +72,20 @@ type HuntResponse = {
         waterlooAccessInfoUrl: string;
         researcherAction: string;
       };
+      waterloo: {
+        status: "OPEN_ACCESS_DIRECT" | "WATERLOO_CHECK_REQUIRED";
+        holdingsStatus: "OPEN_ACCESS" | "UNVERIFIED_IN_OMNI";
+        alumniRemoteScope: "SELECTED_ELECTRONIC_RESOURCES";
+        omniTitleSearchUrl: string;
+        omniDoiSearchUrl?: string;
+        catalogueUrl: string;
+        accessGatewayUrl: string;
+        alumniAccessInfoUrl: string;
+        usageGuidelinesUrl: string;
+        aiUsePolicyUrl: string;
+        researcherAction: string;
+        guard: string;
+      };
     }>;
   };
 };
@@ -78,7 +105,7 @@ export default function BifrostClient() {
         body: JSON.stringify({
           question,
           maxAcquire: 5,
-          rowsPerQuery: 7
+          rowsPerQuery: 8
         })
       });
       setData((await response.json()) as HuntResponse);
@@ -97,23 +124,23 @@ export default function BifrostClient() {
             <Image src="/bifrost-download.svg" alt="BIFROST sigil" width={48} height={48} className="h-12 w-12" priority />
             <div>
               <div className="text-xs tracking-[0.28em] text-amber-300">MAINLAND MYTHOS</div>
-              <div className="font-serif text-2xl">BIFRÖST / IV-E2</div>
+              <div className="font-serif text-2xl">BIFRÖST / IV-E3</div>
             </div>
           </div>
-          <div className="rounded-full border border-emerald-300/20 bg-emerald-300/5 px-3 py-2 text-xs text-emerald-200">
-            REAL CROSSREF METADATA • RIGHTS-AWARE
+          <div className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-100">
+            HUGINN WEB SCOUT • WATERLOO OMNI ROUTER
           </div>
         </header>
 
         <section className="py-20">
           <div className="text-xs tracking-[0.32em] text-amber-300">THE LIBRARIAN’S HUNT</div>
-          <h1 className="mt-3 max-w-4xl font-serif text-6xl leading-none md:text-8xl">
-            Find the scholarship worth crossing for.
+          <h1 className="mt-3 max-w-5xl font-serif text-6xl leading-none md:text-8xl">
+            Discover broadly. Cross surgically.
           </h1>
           <p className="mt-6 max-w-3xl text-lg leading-8 text-slate-400">
-            IV-E2 turns a research question into explicit evidence needs, launches a bounded search against real public Crossref metadata,
-            deduplicates the results, and sends the best candidates through the IV-E1 acquisition planner. Waterloo availability and AI-use
-            rights remain unclaimed until verified.
+            IV-E3 gives Huginn a live scholarly-web scout, merges public metadata across Crossref and OpenAlex when available,
+            ranks the strongest acquisition targets, and forges a pre-filled Waterloo Omni crossing for each candidate. Waterloo
+            holdings and alumni remote access are never assumed; Omni remains the place where the researcher verifies the crossing.
           </p>
         </section>
 
@@ -130,18 +157,32 @@ export default function BifrostClient() {
               disabled={loading || question.trim().length < 3}
               className="mt-4 w-full rounded-2xl bg-gradient-to-r from-cyan-200 via-sky-200 to-amber-200 px-5 py-4 font-bold text-slate-950 transition hover:brightness-110 disabled:opacity-50"
             >
-              {loading ? "SEARCHING THE SCHOLARLY REALM…" : "ᛉ LAUNCH REAL LIBRARIAN’S HUNT"}
+              {loading ? "HUGINN IS FLYING…" : "ᛉ LAUNCH HUGINN + BIFRÖST"}
             </button>
 
-            <div className="mt-6 grid grid-cols-3 gap-3 text-center">
-              <Metric label="DISCOVERED" value={data?.discovery?.candidateCount ?? "—"} />
-              <Metric label="QUERIES" value={data?.discovery?.successfulQueries ?? "—"} />
+            <div className="mt-6 grid grid-cols-2 gap-3 text-center md:grid-cols-4">
+              <Metric label="DISCOVERED" value={data?.discovery?.combinedCandidateCount ?? "—"} />
+              <Metric label="CROSSREF" value={data?.discovery?.crossref.candidateCount ?? "—"} />
+              <Metric label="OPENALEX" value={data?.discovery?.openAlex.candidateCount ?? "—"} />
               <Metric label="ACQUIRE" value={data?.plan?.acquisitionTarget ?? "—"} />
             </div>
 
-            <div className="mt-6 rounded-2xl border border-white/10 bg-black/30 p-4 text-xs leading-6 text-slate-400">
+            <div className="mt-6 grid gap-3 md:grid-cols-2">
+              <RealmStatus
+                name="HUGINN"
+                detail={`Crossref ${data?.discovery?.crossref.status ?? "IDLE"} • OpenAlex ${data?.discovery?.openAlex.status ?? "IDLE"}`}
+                tone="cyan"
+              />
+              <RealmStatus
+                name="WATERLOO"
+                detail={data?.waterloo ? "OMNI ROUTING ACTIVE • HOLDINGS VERIFY THERE" : "ROUTER IDLE"}
+                tone="amber"
+              />
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-xs leading-6 text-slate-400">
               <div className="font-mono text-cyan-200">CREDENTIAL BOUNDARY</div>
-              BIFRÖST never receives WatIAM credentials. Waterloo authentication stays in the researcher’s normal browser session.
+              BIFRÖST never receives WatIAM credentials. Waterloo authentication stays in your normal browser session.
             </div>
 
             {data?.gap && (
@@ -167,7 +208,7 @@ export default function BifrostClient() {
 
             {!data && (
               <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-8 text-center text-slate-500">
-                Launch the hunt to search real scholarly metadata and produce a ranked acquisition plan.
+                Launch Huginn to discover real scholarly metadata and forge Waterloo crossings.
               </div>
             )}
 
@@ -184,10 +225,22 @@ export default function BifrostClient() {
                     <span className="font-mono text-xs text-amber-300">
                       {String(index + 1).padStart(2, "0")} / PRIORITY {item.priorityScore}
                     </span>
-                    <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-slate-400">
-                      {item.downstreamMode.replaceAll("_", " ")}
-                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-slate-400">
+                        {item.downstreamMode.replaceAll("_", " ")}
+                      </span>
+                      <span
+                        className={`rounded-full border px-2 py-1 text-[10px] ${
+                          item.waterloo.holdingsStatus === "OPEN_ACCESS"
+                            ? "border-emerald-300/20 bg-emerald-300/5 text-emerald-200"
+                            : "border-amber-300/20 bg-amber-300/5 text-amber-200"
+                        }`}
+                      >
+                        {item.waterloo.holdingsStatus.replaceAll("_", " ")}
+                      </span>
+                    </div>
                   </div>
+
                   <h3 className="mt-3 font-serif text-xl">{item.title}</h3>
                   <div className="mt-2 text-sm text-slate-500">
                     {item.authors?.slice(0, 3).join(", ") || "Authors unavailable"} • {item.year ?? "Year unknown"}
@@ -204,6 +257,10 @@ export default function BifrostClient() {
                     <Score label="RIGHTS" value={item.scoreBreakdown.rightsPenalty} />
                   </div>
 
+                  <div className="mt-4 rounded-xl border border-amber-300/10 bg-amber-300/[0.03] p-3 text-[11px] leading-5 text-slate-500">
+                    <span className="font-mono text-amber-200">WATERLOO ROUTE</span> — {item.waterloo.researcherAction}
+                  </div>
+
                   <div className="mt-4 flex flex-wrap gap-2">
                     {item.route.doiResolverUrl && (
                       <a
@@ -215,15 +272,56 @@ export default function BifrostClient() {
                         OPEN DOI ↗
                       </a>
                     )}
+                    {item.accessStatus === "OPEN_ACCESS" && item.route.directUrl && (
+                      <a
+                        href={item.route.directUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-xl border border-emerald-300/20 bg-emerald-300/5 px-3 py-2 text-xs text-emerald-200 transition hover:bg-emerald-300/10"
+                      >
+                        OPEN PUBLIC SOURCE ↗
+                      </a>
+                    )}
+                    {item.waterloo.omniDoiSearchUrl && (
+                      <a
+                        href={item.waterloo.omniDoiSearchUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-300/15"
+                      >
+                        CHECK DOI IN WATERLOO OMNI ↗
+                      </a>
+                    )}
                     <a
-                      href={item.route.waterlooCatalogueUrl}
+                      href={item.waterloo.omniTitleSearchUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="rounded-xl border border-amber-300/20 bg-amber-300/5 px-3 py-2 text-xs text-amber-200 transition hover:bg-amber-300/10"
                     >
-                      SEARCH WATERLOO ↗
+                      SEARCH TITLE IN OMNI ↗
+                    </a>
+                    <a
+                      href={item.waterloo.accessGatewayUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-xl border border-violet-300/20 bg-violet-300/5 px-3 py-2 text-xs text-violet-200 transition hover:bg-violet-300/10"
+                    >
+                      WATERLOO ACCESS GATE ↗
                     </a>
                   </div>
+
+                  <details className="mt-4 text-xs text-slate-500">
+                    <summary className="cursor-pointer font-mono text-slate-400">RIGHTS + ROUTE GUARD</summary>
+                    <p className="mt-2 leading-5">{item.waterloo.guard}</p>
+                    <div className="mt-2 flex flex-wrap gap-3">
+                      <a className="text-violet-200 underline-offset-4 hover:underline" href={item.waterloo.aiUsePolicyUrl} target="_blank" rel="noreferrer">
+                        Waterloo AI-use policy ↗
+                      </a>
+                      <a className="text-violet-200 underline-offset-4 hover:underline" href={item.waterloo.usageGuidelinesUrl} target="_blank" rel="noreferrer">
+                        Electronic-resource guidelines ↗
+                      </a>
+                    </div>
+                  </details>
                 </article>
               ))}
             </div>
@@ -260,7 +358,7 @@ export default function BifrostClient() {
         ) : null}
 
         <footer className="py-20 text-center text-sm text-slate-600">
-          ᛉ BIFRÖST • REAL METADATA DISCOVERY • SURGICAL ACQUISITION • ZERO CREDENTIAL ABUSE
+          ᛉ BIFRÖST • HUGINN WEB SCOUT • WATERLOO OMNI ROUTING • SURGICAL ACQUISITION
         </footer>
       </div>
     </main>
@@ -281,6 +379,20 @@ function Score({ label, value }: { label: string; value: number }) {
     <div className="rounded-lg border border-white/5 bg-black/30 p-2">
       <div className={value < 0 ? "text-rose-300" : "text-cyan-200"}>{value}</div>
       <div className="mt-1">{label}</div>
+    </div>
+  );
+}
+
+function RealmStatus({ name, detail, tone }: { name: string; detail: string; tone: "cyan" | "amber" }) {
+  const classes =
+    tone === "cyan"
+      ? "border-cyan-300/15 bg-cyan-300/5 text-cyan-100"
+      : "border-amber-300/15 bg-amber-300/5 text-amber-100";
+
+  return (
+    <div className={`rounded-2xl border p-4 ${classes}`}>
+      <div className="font-serif text-lg">{name}</div>
+      <div className="mt-1 font-mono text-[10px] text-slate-400">{detail}</div>
     </div>
   );
 }
