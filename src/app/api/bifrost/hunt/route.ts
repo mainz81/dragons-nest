@@ -15,11 +15,21 @@ const holdingSchema = z.object({
 const bodySchema = z.object({
   question: z.string().min(3).max(800),
   mimirHoldings: z.array(holdingSchema).max(500).optional(),
-  maxAcquire: z.number().int().min(1).max(12).optional().default(5),
-  rowsPerQuery: z.number().int().min(3).max(15).optional().default(8)
+  maxAcquire: z.number().int().min(1).max(12).optional().default(10),
+  rowsPerQuery: z.number().int().min(5).max(25).optional().default(15)
 });
 
 export const runtime = "nodejs";
+
+function withWaterloo<T extends ReturnType<typeof planAcquisition>>(plan: T) {
+  return {
+    ...plan,
+    queue: plan.queue.map((item) => ({
+      ...item,
+      waterloo: buildWaterlooRoute(item)
+    }))
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -46,37 +56,57 @@ export async function POST(request: Request) {
       discoverOpenAlex({
         question: body.question,
         evidenceGapTags: gap.needs.map((need) => need.label),
-        perPage: Math.min(body.rowsPerQuery, 10)
+        perPage: Math.min(body.rowsPerQuery, 25)
       })
     ]);
 
-    const candidates = mergeScholarlyCandidates(crossref.candidates, openAlex.candidates);
+    const combinedCandidates = mergeScholarlyCandidates(crossref.candidates, openAlex.candidates);
+    const scholarlyCandidates = crossref.candidates.filter((candidate) => Boolean(candidate.publicationTitle));
+    const journalPool = scholarlyCandidates.length ? scholarlyCandidates : crossref.candidates;
 
-    const basePlan = planAcquisition({
+    // OpenAlex supplies an independent research-web lens. If it is unavailable,
+    // we still expose ranked publisher/DOI web routes from Crossref rather than
+    // pretending the web channel succeeded.
+    const webCandidates = openAlex.status === "AVAILABLE"
+      ? openAlex.candidates
+      : crossref.candidates.filter((candidate) => Boolean(candidate.url));
+    const webSource = openAlex.status === "AVAILABLE" ? "OPENALEX" : "CROSSREF_PUBLISHER_WEB_FALLBACK";
+
+    const mergedPlan = withWaterloo(planAcquisition({
       question: body.question,
-      candidates,
+      candidates: combinedCandidates,
       evidenceGapTags: gap.needs.map((need) => need.label),
       maxAcquire: body.maxAcquire
-    });
+    }));
 
-    const plan = {
-      ...basePlan,
-      queue: basePlan.queue.map((item) => ({
-        ...item,
-        waterloo: buildWaterlooRoute(item)
-      }))
-    };
+    const scholarlyPlan = withWaterloo(planAcquisition({
+      question: body.question,
+      candidates: journalPool,
+      evidenceGapTags: gap.needs.map((need) => need.label),
+      maxAcquire: body.maxAcquire
+    }));
 
-    const warnings = [...crossref.warnings, ...openAlex.warnings, ...basePlan.warnings];
+    const webPlan = withWaterloo(planAcquisition({
+      question: body.question,
+      candidates: webCandidates,
+      evidenceGapTags: gap.needs.map((need) => need.label),
+      maxAcquire: body.maxAcquire
+    }));
+
+    const warnings = [
+      ...crossref.warnings,
+      ...openAlex.warnings,
+      ...mergedPlan.warnings
+    ];
 
     return NextResponse.json({
       ok: true,
-      phase: "IV-E3",
-      version: "0.3.0",
-      mode: "HUGINN_PUBLIC_WEB_PLUS_WATERLOO_ROUTE_INTELLIGENCE",
+      phase: "IV-E3.1",
+      version: "0.3.1",
+      mode: "HUGINN_DUAL_CHANNEL_DISCOVERY_PLUS_WATERLOO_ROUTE_INTELLIGENCE",
       discovery: {
         source: "HUGINN",
-        combinedCandidateCount: candidates.length,
+        combinedCandidateCount: combinedCandidates.length,
         crossref: {
           status: crossref.successfulQueries > 0 ? "AVAILABLE" : "UNAVAILABLE",
           queryCount: crossref.queryCount,
@@ -88,17 +118,32 @@ export async function POST(request: Request) {
           candidateCount: openAlex.candidateCount
         }
       },
+      channels: {
+        scholarlyJournals: {
+          label: "SCHOLARLY JOURNALS",
+          source: "CROSSREF",
+          candidateCount: journalPool.length,
+          queue: scholarlyPlan.queue
+        },
+        webResults: {
+          label: "HUGINN WEB RESULTS",
+          source: webSource,
+          sourceStatus: openAlex.status,
+          candidateCount: webCandidates.length,
+          queue: webPlan.queue
+        }
+      },
       waterloo: {
-        routing: "OMNI_DEEP_LINKS",
+        routing: "OMNI_DEEP_LINKS_WITH_ARTICLE_DOI_AND_JOURNAL_PREFILL",
         holdingsVerification: "RESEARCHER_CONFIRMED_IN_OMNI",
         alumniRemoteScope: "SELECTED_ELECTRONIC_RESOURCES",
         credentialHandling: "NONE"
       },
       gap,
-      plan,
+      plan: mergedPlan,
       warnings,
       guard:
-        "Huginn uses real public scholarly-web metadata from Crossref and, when available, OpenAlex. BIFROST creates pre-filled Waterloo Omni search routes but does not claim Waterloo owns or licenses a candidate until Omni confirms it. Licensed full text remains outside third-party AI workflows unless the applicable licence explicitly permits that use."
+        "Huginn separates ranked scholarly-publication discovery from an independent research-web lens. BIFRÖST now creates pre-filled Waterloo Omni searches for the article title, DOI, and journal/publication title when metadata is available. Waterloo holdings and alumni entitlement remain unclaimed until Omni confirms them."
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -111,8 +156,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "BIFROST_IV_E3_FAILURE",
-        message: error instanceof Error ? error.message : "Unknown IV-E3 error"
+        error: "BIFROST_IV_E3_1_FAILURE",
+        message: error instanceof Error ? error.message : "Unknown IV-E3.1 error"
       },
       { status: 500 }
     );
