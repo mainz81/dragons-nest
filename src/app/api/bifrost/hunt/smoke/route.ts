@@ -19,60 +19,91 @@ export async function GET() {
   }));
 
   const [crossref, openAlex] = await Promise.all([
-    discoverCrossref({ question, queries, rowsPerQuery: 8 }),
+    discoverCrossref({ question, queries, rowsPerQuery: 18 }),
     discoverOpenAlex({
       question,
       evidenceGapTags: gap.needs.map((need) => need.label),
-      perPage: 8
+      perPage: 18
     })
   ]);
 
-  const candidates = mergeScholarlyCandidates(crossref.candidates, openAlex.candidates);
-  const plan = planAcquisition({
+  const combinedCandidates = mergeScholarlyCandidates(crossref.candidates, openAlex.candidates);
+  const journalPool = crossref.candidates.filter((candidate) => Boolean(candidate.publicationTitle));
+  const scholarlyCandidates = journalPool.length ? journalPool : crossref.candidates;
+  const webCandidates = openAlex.status === "AVAILABLE"
+    ? openAlex.candidates
+    : crossref.candidates.filter((candidate) => Boolean(candidate.url));
+
+  const scholarlyPlan = planAcquisition({
     question,
-    candidates,
+    candidates: scholarlyCandidates,
     evidenceGapTags: gap.needs.map((need) => need.label),
-    maxAcquire: 5
+    maxAcquire: 12
+  });
+  const webPlan = planAcquisition({
+    question,
+    candidates: webCandidates,
+    evidenceGapTags: gap.needs.map((need) => need.label),
+    maxAcquire: 12
   });
 
-  const sample = plan.queue.slice(0, 5).map((item) => ({
+  const scholarlySample = scholarlyPlan.queue.slice(0, 5).map((item) => ({
     title: item.title,
+    journal: item.publicationTitle,
     doi: item.normalizedDoi,
-    year: item.year,
     priorityScore: item.priorityScore,
-    downstreamMode: item.downstreamMode,
     waterloo: buildWaterlooRoute(item)
   }));
 
-  const omniDeepLinksReady = sample.every((item) =>
-    item.waterloo.omniTitleSearchUrl.includes("ocul-wtl.primo.exlibrisgroup.com/discovery/search")
+  const webSample = webPlan.queue.slice(0, 5).map((item) => ({
+    title: item.title,
+    journal: item.publicationTitle,
+    doi: item.normalizedDoi,
+    priorityScore: item.priorityScore,
+    webUrl: item.url,
+    waterloo: buildWaterlooRoute(item)
+  }));
+
+  const journalPrefillReady = scholarlySample.some((item) =>
+    Boolean(item.journal && item.waterloo.omniJournalSearchUrl?.includes("ocul-wtl.primo.exlibrisgroup.com/discovery/search"))
   );
 
   return NextResponse.json({
-    ok: crossref.successfulQueries > 0 && omniDeepLinksReady,
-    phase: "IV-E3",
-    version: "0.3.0",
-    huginn: {
+    ok: crossref.successfulQueries > 0 && journalPrefillReady,
+    phase: "IV-E3.1",
+    version: "0.3.1",
+    discovery: {
+      combinedCandidates: combinedCandidates.length,
       crossref: {
         status: crossref.successfulQueries > 0 ? "AVAILABLE" : "UNAVAILABLE",
+        queryCount: crossref.queryCount,
         candidates: crossref.candidateCount
       },
       openAlex: {
         status: openAlex.status,
         candidates: openAlex.candidateCount
+      }
+    },
+    channels: {
+      scholarlyJournals: {
+        candidates: scholarlyCandidates.length,
+        ranked: scholarlyPlan.queue.length,
+        sample: scholarlySample
       },
-      combinedCandidates: candidates.length
+      webResults: {
+        source: openAlex.status === "AVAILABLE" ? "OPENALEX" : "CROSSREF_PUBLISHER_WEB_FALLBACK",
+        candidates: webCandidates.length,
+        ranked: webPlan.queue.length,
+        sample: webSample
+      }
     },
     waterloo: {
-      omniDeepLinksReady,
+      journalPrefillReady,
       holdingsClaimed: false,
-      alumniRemoteScope: "SELECTED_ELECTRONIC_RESOURCES",
       credentialHandling: "NONE"
     },
-    acquisitionTarget: plan.acquisitionTarget,
-    sample,
-    warnings: [...crossref.warnings, ...openAlex.warnings, ...plan.warnings],
+    warnings: [...crossref.warnings, ...openAlex.warnings, ...scholarlyPlan.warnings, ...webPlan.warnings],
     guard:
-      "Smoke acceptance verifies live public metadata discovery and construction of Waterloo Omni deep-search routes. It does not assert Waterloo holdings, alumni entitlement to a specific title, or AI-use permission."
+      "Acceptance verifies deeper ranked discovery, separate scholarly and research-web channels, and Waterloo Omni links pre-filled with journal/publication titles where metadata exists. It does not assert Waterloo holdings or licence permissions."
   });
 }
