@@ -205,13 +205,17 @@ export default function BifrostClient() {
       if (!raw) return;
       const parsed = JSON.parse(raw) as QueueItem[];
       if (Array.isArray(parsed)) setIntake(parsed);
-    } catch {}
+    } catch {
+      // Corrupt local state should never block research.
+    }
   }, []);
 
   useEffect(() => {
     try {
       window.localStorage.setItem(INTAKE_STORAGE_KEY, JSON.stringify(intake));
-    } catch {}
+    } catch {
+      // Storage failure is non-fatal; export remains available for the current session.
+    }
   }, [intake]);
 
   async function hunt() {
@@ -222,7 +226,11 @@ export default function BifrostClient() {
       const response = await fetch("/api/bifrost/hunt", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question, maxAcquire: 50, rowsPerQuery: 50 })
+        body: JSON.stringify({
+          question,
+          maxAcquire: 50,
+          rowsPerQuery: 50
+        })
       });
       setData((await response.json()) as HuntResponse);
     } catch {
@@ -242,12 +250,49 @@ export default function BifrostClient() {
 
   function exportRis() {
     if (!intake.length) return;
-    downloadText("bifrost-zotero-intake.ris", intake.map(toRis).join("\n\n"), "application/x-research-info-systems;charset=utf-8");
+    downloadText(
+      "bifrost-zotero-intake.ris",
+      intake.map(toRis).join("\n\n"),
+      "application/x-research-info-systems;charset=utf-8"
+    );
   }
 
   function exportManifest() {
     if (!intake.length) return;
-    downloadText("bifrost-intake-manifest.json", JSON.stringify({ system: "MAINLAND MYTHOS", bridge: "BIFROST", items: intake }, null, 2), "application/json;charset=utf-8");
+    const manifest = {
+      system: "MAINLAND MYTHOS",
+      bridge: "BIFROST",
+      phase: "IV-E4C",
+      exportedAt: new Date().toISOString(),
+      researchIntent: question,
+      count: intake.length,
+      doctrine: {
+        metadataOnlyExport: true,
+        credentialsIncluded: false,
+        fullTextIncluded: false,
+        rightsReviewRequiredBeforeMimirIngest: true
+      },
+      items: intake.map((item) => ({
+        key: itemKey(item),
+        title: item.title,
+        publicationTitle: item.publicationTitle,
+        authors: item.authors ?? [],
+        year: item.year,
+        doi: item.normalizedDoi,
+        priorityScore: item.priorityScore,
+        accessStatus: item.accessStatus,
+        downstreamMode: item.downstreamMode,
+        publicUrl: item.route.directUrl,
+        doiUrl: item.route.doiResolverUrl,
+        waterloo: {
+          holdingsStatus: item.waterloo.holdingsStatus,
+          articleSearch: item.waterloo.omniTitleSearchUrl,
+          journalSearch: item.waterloo.omniJournalSearchUrl,
+          doiSearch: item.waterloo.omniDoiSearchUrl
+        }
+      }))
+    };
+    downloadText("bifrost-intake-manifest.json", JSON.stringify(manifest, null, 2), "application/json;charset=utf-8");
   }
 
   const activeQueue = useMemo(() => {
@@ -267,34 +312,47 @@ export default function BifrostClient() {
     <main className="min-h-screen bg-[#05070b] text-slate-100">
       <div className="mx-auto max-w-7xl px-5 py-8 md:px-8">
         <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/30 px-5 py-4 backdrop-blur">
-          <div className="flex items-center gap-4">
-            <div className="rounded-2xl border border-cyan-300/20 bg-black/40 p-1.5 shadow-lg shadow-cyan-500/10">
-              <Image src="/bifrost-download.svg" alt="BIFRÖST official sigil" width={64} height={64} className="h-14 w-14 md:h-16 md:w-16" priority />
-            </div>
+          <div className="flex items-center gap-3">
+            <Image src="/bifrost-download.svg" alt="BIFROST sigil" width={48} height={48} className="h-12 w-12" priority />
             <div>
               <div className="text-xs tracking-[0.28em] text-amber-300">MAINLAND MYTHOS</div>
-              <div className="font-serif text-2xl md:text-3xl">BIFRÖST</div>
-              <div className="mt-1 text-[10px] tracking-[0.18em] text-cyan-200/70">OFFICIAL SCHOLARLY BRIDGE SIGIL</div>
+              <div className="font-serif text-2xl">BIFRÖST / IV-E4C</div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-100">HUGINN THREE-LANE PAGE DISCOVERY</div>
-            <div className="rounded-full border border-violet-300/20 bg-violet-300/5 px-3 py-2 text-xs text-violet-100">MÍMIR INTAKE {intake.length}</div>
+            <div className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-100">
+              HUGINN THREE-LANE PAGE DISCOVERY
+            </div>
+            <div className="rounded-full border border-violet-300/20 bg-violet-300/5 px-3 py-2 text-xs text-violet-100">
+              MÍMIR INTAKE {intake.length}
+            </div>
           </div>
         </header>
 
         <section className="py-16 md:py-20">
           <div className="text-xs tracking-[0.32em] text-amber-300">THE LIBRARIAN’S HUNT</div>
-          <h1 className="mt-3 max-w-5xl font-serif text-6xl leading-none md:text-8xl">Search wide. Rank hard. Cross the actual page.</h1>
-          <p className="mt-6 max-w-4xl text-lg leading-8 text-slate-400">BIFRÖST separates formal scholarship, the OpenAlex research-web ecosystem, and trusted non-journal pages from authoritative sources.</p>
+          <h1 className="mt-3 max-w-5xl font-serif text-6xl leading-none md:text-8xl">
+            Search wide. Rank hard. Cross the actual page.
+          </h1>
+          <p className="mt-6 max-w-4xl text-lg leading-8 text-slate-400">
+            BIFRÖST now separates formal scholarship, the OpenAlex research-web ecosystem, and a trusted non-journal lane that searches for actual pages, then rejects anything outside the curated authority registry. Britannica, universities, governments, public-health bodies, archives, data institutions and research organizations can now surface as direct page-level crossings.
+          </p>
         </section>
 
         <section className="grid gap-5 lg:grid-cols-[0.78fr_1.22fr]">
           <aside className="space-y-5">
             <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6 shadow-2xl shadow-black/40">
               <div className="text-xs tracking-[0.22em] text-slate-500">RESEARCH INTENT</div>
-              <textarea value={question} onChange={(event) => setQuestion(event.target.value)} className="mt-4 min-h-36 w-full resize-none rounded-2xl border border-white/10 bg-black/40 p-4 text-lg outline-none transition focus:border-cyan-300/40" />
-              <button onClick={hunt} disabled={loading || question.trim().length < 3} className="mt-4 w-full rounded-2xl bg-gradient-to-r from-cyan-200 via-sky-200 to-amber-200 px-5 py-4 font-bold text-slate-950 transition hover:brightness-110 disabled:opacity-50">
+              <textarea
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                className="mt-4 min-h-36 w-full resize-none rounded-2xl border border-white/10 bg-black/40 p-4 text-lg outline-none transition focus:border-cyan-300/40"
+              />
+              <button
+                onClick={hunt}
+                disabled={loading || question.trim().length < 3}
+                className="mt-4 w-full rounded-2xl bg-gradient-to-r from-cyan-200 via-sky-200 to-amber-200 px-5 py-4 font-bold text-slate-950 transition hover:brightness-110 disabled:opacity-50"
+              >
                 {loading ? "HUGINN IS FLYING ACROSS THREE SKIES…" : "ᛉ LAUNCH 50-DEEP HUGINN + BIFRÖST"}
               </button>
 
@@ -305,15 +363,91 @@ export default function BifrostClient() {
                 <Metric label="TRUSTED PAGES" value={trustedPages.length || "—"} />
                 <Metric label="MÍMIR INTAKE" value={intake.length} />
               </div>
+
+              <div className="mt-6 grid gap-3">
+                <RealmStatus
+                  name="HUGINN"
+                  detail={`Crossref ${data?.discovery?.crossref.status ?? "IDLE"} • OpenAlex ${data?.discovery?.openAlex.status ?? "IDLE"} • Trusted Pages ${data?.discovery?.trustedWeb?.status ?? "IDLE"}`}
+                  tone="cyan"
+                />
+                <RealmStatus
+                  name="WATERLOO"
+                  detail={data?.waterloo ? "ARTICLE + DOI + JOURNAL PREFILL ACTIVE" : "ROUTER IDLE"}
+                  tone="amber"
+                />
+              </div>
+
+              {data?.discovery?.trustedWeb && (
+                <div className="mt-4 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.04] p-4 text-xs leading-6 text-slate-400">
+                  <div className="font-mono text-emerald-200">TRUSTED WEB BACKEND</div>
+                  {data.discovery.trustedWeb.mode.replaceAll("_", " ")} • {data.discovery.trustedWeb.pageResultCount} pages • {data.discovery.trustedWeb.backendTrust.replaceAll("_", " ")}
+                </div>
+              )}
+
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-xs leading-6 text-slate-400">
+                <div className="font-mono text-cyan-200">CREDENTIAL BOUNDARY</div>
+                BIFRÖST never receives WatIAM credentials. Waterloo authentication stays in your normal browser session.
+              </div>
             </div>
 
             <div className="rounded-3xl border border-violet-300/15 bg-violet-300/[0.04] p-6 shadow-2xl shadow-black/40">
-              <div className="text-xs tracking-[0.22em] text-violet-300">MÍMIR INTAKE DOCK</div>
-              <div className="mt-1 font-serif text-2xl">Selected scholarship</div>
-              <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                <button type="button" disabled={!intake.length} onClick={exportRis} className="rounded-xl border border-emerald-300/25 bg-emerald-300/10 px-3 py-3 text-xs font-semibold text-emerald-100 disabled:opacity-30">EXPORT ZOTERO RIS ↓</button>
-                <button type="button" disabled={!intake.length} onClick={exportManifest} className="rounded-xl border border-violet-300/25 bg-violet-300/10 px-3 py-3 text-xs font-semibold text-violet-100 disabled:opacity-30">EXPORT MANIFEST ↓</button>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs tracking-[0.22em] text-violet-300">MÍMIR INTAKE DOCK</div>
+                  <div className="mt-1 font-serif text-2xl">Selected scholarship</div>
+                </div>
+                <div className="rounded-full border border-violet-300/20 bg-violet-300/5 px-3 py-1.5 font-mono text-xs text-violet-200">
+                  {intake.length}
+                </div>
               </div>
+
+              {intake.length === 0 ? (
+                <p className="mt-4 text-sm leading-6 text-slate-500">
+                  Stage the strongest scholarly crossings. The dock persists in this browser between hunts.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {intake.slice(0, 5).map((item) => (
+                    <div key={itemKey(item)} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                      <div className="line-clamp-2 text-sm text-slate-200">{item.title}</div>
+                      <div className="mt-1 font-mono text-[10px] text-slate-600">
+                        {item.normalizedDoi ?? item.publicationTitle ?? "METADATA STAGED"}
+                      </div>
+                    </div>
+                  ))}
+                  {intake.length > 5 && <div className="text-xs text-slate-600">+ {intake.length - 5} more staged sources</div>}
+                </div>
+              )}
+
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={exportRis}
+                  disabled={!intake.length}
+                  className="rounded-xl border border-emerald-300/25 bg-emerald-300/10 px-3 py-3 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-300/15 disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  EXPORT ZOTERO RIS ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={exportManifest}
+                  disabled={!intake.length}
+                  className="rounded-xl border border-violet-300/25 bg-violet-300/10 px-3 py-3 text-xs font-semibold text-violet-100 transition hover:bg-violet-300/15 disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  EXPORT MANIFEST ↓
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIntake([])}
+                disabled={!intake.length}
+                className="mt-2 w-full rounded-xl border border-white/10 px-3 py-2 text-[11px] text-slate-500 transition hover:bg-white/[0.04] hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                CLEAR INTAKE DOCK
+              </button>
+              <p className="mt-4 text-[11px] leading-5 text-slate-500">
+                RIS and manifest exports contain metadata only — no Waterloo credentials and no licensed full text. Rights review still governs whether acquired text may enter Mímir.
+              </p>
             </div>
           </aside>
 
@@ -323,67 +457,276 @@ export default function BifrostClient() {
                 <div className="text-xs tracking-[0.22em] text-slate-500">RANKED DISCOVERY</div>
                 <h2 className="mt-1 font-serif text-3xl">The Ranked Crossing</h2>
               </div>
+              {data?.phase && (
+                <div className="rounded-full border border-emerald-300/20 bg-emerald-300/5 px-3 py-2 text-xs text-emerald-200">
+                  DISCOVERY KERNEL {data.phase} / v{data.version}
+                </div>
+              )}
             </div>
 
-            {data?.channels ? (
-              <>
-                <div className="mt-6 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-black/20 p-1.5 text-xs">
-                  <button onClick={() => setChannel("scholarly")} className={`rounded-xl px-3 py-3 ${channel === "scholarly" ? "bg-amber-300/10 text-amber-200" : "text-slate-400"}`}>SCHOLARLY JOURNALS {journalCount}</button>
-                  <button onClick={() => setChannel("web")} className={`rounded-xl px-3 py-3 ${channel === "web" ? "bg-cyan-300/10 text-cyan-200" : "text-slate-400"}`}>HUGINN RESEARCH WEB {webCount}</button>
-                  <button onClick={() => setChannel("trusted")} className={`rounded-xl px-3 py-3 ${channel === "trusted" ? "bg-emerald-300/10 text-emerald-200" : "text-slate-400"}`}>HUGINN TRUSTED WEB {trustedCount}</button>
+            {data?.channels && (
+              <div className="mt-5 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-black/30 p-1.5 sm:grid-cols-3">
+                <ChannelButton active={channel === "scholarly"} onClick={() => setChannel("scholarly")} label="SCHOLARLY JOURNALS" count={journalCount} tone="amber" />
+                <ChannelButton active={channel === "web"} onClick={() => setChannel("web")} label="HUGINN RESEARCH WEB" count={webCount} tone="cyan" />
+                <ChannelButton active={channel === "trusted"} onClick={() => setChannel("trusted")} label="HUGINN TRUSTED WEB" count={trustedCount} tone="emerald" />
+              </div>
+            )}
+
+            {!data && (
+              <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-10 text-center text-slate-500">
+                Launch the deep hunt. BIFRÖST will rank scholarship, research-web material, and actual trusted non-journal pages separately.
+              </div>
+            )}
+
+            {data && !data.ok && (
+              <div className="mt-6 rounded-2xl border border-red-300/20 bg-red-300/5 p-5 text-red-200">
+                {data.message ?? data.error ?? "BIFRÖST hunt failed."}
+              </div>
+            )}
+
+            {channel !== "trusted" && activeQueue && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                <span>SOURCE: <span className="font-mono text-slate-300">{activeQueue.source.replaceAll("_", " ")}</span></span>
+                <span>{activeQueue.candidateCount} CANDIDATES • {activeQueue.queue.length} RANKED CROSSINGS</span>
+              </div>
+            )}
+
+            {channel === "trusted" && trustedChannel && (
+              <div className="mt-4 rounded-xl border border-emerald-300/15 bg-emerald-300/[0.04] p-4 text-[11px] leading-5 text-slate-400">
+                <span className="font-mono text-emerald-200">
+                  {trustedPages.length ? "PAGE-LEVEL TRUSTED SEARCH" : "AUTHORITATIVE GATEWAY FALLBACK"}
+                </span>
+                {" — "}{trustedChannel.guard}
+              </div>
+            )}
+
+            <div className="mt-5 space-y-4">
+              {channel !== "trusted" && activeQueue?.queue.map((item, index) => (
+                <ResultCard
+                  key={`${item.id ?? item.title}-${index}`}
+                  item={item}
+                  index={index}
+                  channel={channel}
+                  staged={intakeKeys.has(itemKey(item))}
+                  onToggleStage={() => toggleIntake(item)}
+                />
+              ))}
+
+              {channel === "trusted" && trustedPages.map((page, index) => (
+                <TrustedPageCard key={page.id} page={page} index={index} />
+              ))}
+
+              {channel === "trusted" && trustedPages.length === 0 && trustedRoutes.map((route, index) => (
+                <TrustedRouteCard key={route.id} route={route} index={index} />
+              ))}
+            </div>
+
+            {channel === "trusted" && trustedPages.length > 0 && trustedRoutes.length > 0 && (
+              <details className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <summary className="cursor-pointer text-xs font-semibold tracking-wide text-emerald-200">
+                  BROWSE RANKED TRUSTED SOURCE GATEWAYS ({trustedRoutes.length})
+                </summary>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {trustedRoutes.slice(0, 12).map((route, index) => (
+                    <TrustedRouteCard key={`gateway-${route.id}`} route={route} index={index} compact />
+                  ))}
                 </div>
+              </details>
+            )}
 
-                <div className="mt-5 space-y-4">
-                  {channel !== "trusted" && activeQueue?.queue.map((item, index) => (
-                    <article key={itemKey(item)} className="rounded-2xl border border-white/10 bg-black/30 p-5">
-                      <div className="font-mono text-xs text-amber-300">{String(index + 1).padStart(2, "0")} / PRIORITY {item.priorityScore}</div>
-                      <h3 className="mt-4 font-serif text-2xl">{item.title}</h3>
-                      <div className="mt-3 text-sm text-slate-500">{item.authors?.join(", ")} {item.year ? `• ${item.year}` : ""}</div>
-                      {item.publicationTitle && <div className="mt-3 rounded-xl border border-amber-300/10 bg-amber-300/[0.03] p-3 text-xs text-amber-100">JOURNAL / PUBLICATION • {item.publicationTitle}</div>}
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {item.route.doiResolverUrl && <a href={item.route.doiResolverUrl} target="_blank" rel="noreferrer" className="rounded-xl border border-cyan-300/30 px-3 py-2 text-xs text-cyan-200">OPEN DOI ↗</a>}
-                        {item.waterloo.omniJournalSearchUrl && <a href={item.waterloo.omniJournalSearchUrl} target="_blank" rel="noreferrer" className="rounded-xl border border-amber-300/30 px-3 py-2 text-xs text-amber-200">SEARCH JOURNAL IN WATERLOO ↗</a>}
-                        <button onClick={() => toggleIntake(item)} className="rounded-xl border border-violet-300/30 px-3 py-2 text-xs text-violet-200">{intakeKeys.has(itemKey(item)) ? "REMOVE FROM MÍMIR" : "QUEUE FOR MÍMIR"}</button>
-                      </div>
-                    </article>
-                  ))}
-
-                  {channel === "trusted" && trustedPages.map((page, index) => (
-                    <article key={page.id} className="rounded-2xl border border-emerald-300/10 bg-black/30 p-5">
-                      <div className="font-mono text-xs text-emerald-300">{String(index + 1).padStart(2, "0")} / TRUST {page.priorityScore}</div>
-                      <h3 className="mt-4 font-serif text-2xl">{page.title}</h3>
-                      <div className="mt-2 text-sm text-slate-500">{page.sourceName} • {page.domain}</div>
-                      <p className="mt-3 text-sm leading-6 text-slate-400">{page.snippet}</p>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <a href={page.url} target="_blank" rel="noreferrer" className="rounded-xl border border-emerald-300/30 px-3 py-2 text-xs text-emerald-200">OPEN TRUSTED PAGE ↗</a>
-                        <a href={page.sourceSearchUrl} target="_blank" rel="noreferrer" className="rounded-xl border border-white/10 px-3 py-2 text-xs text-slate-300">SEARCH THIS SOURCE ↗</a>
-                      </div>
-                    </article>
-                  ))}
-
-                  {channel === "trusted" && !trustedPages.length && trustedRoutes.map((route, index) => (
-                    <article key={route.id} className="rounded-2xl border border-white/10 bg-black/30 p-5">
-                      <div className="font-mono text-xs text-emerald-300">{String(index + 1).padStart(2, "0")} / TRUST {route.priorityScore}</div>
-                      <h3 className="mt-4 font-serif text-2xl">{route.name}</h3>
-                      <div className="mt-2 text-sm text-slate-500">{route.domain}</div>
-                      <p className="mt-3 text-sm text-slate-400">{route.rationale}</p>
-                      <a href={route.searchUrl} target="_blank" rel="noreferrer" className="mt-4 inline-block rounded-xl border border-emerald-300/30 px-3 py-2 text-xs text-emerald-200">SEARCH THIS SOURCE ↗</a>
-                    </article>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-10 text-center text-slate-500">Launch the deep hunt. BIFRÖST will rank scholarship, research-web material, and trusted non-journal pages separately.</div>
+            {channel !== "trusted" && activeQueue && activeQueue.queue.length === 0 && (
+              <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-8 text-center text-slate-500">
+                No ranked results survived this channel’s current relevance gate. BIFRÖST does not treat that as evidence that nothing exists.
+              </div>
             )}
           </section>
         </section>
 
-        <footer className="py-20 text-center text-sm text-slate-600">ᛉ BIFRÖST • OFFICIAL SIGIL RESTORED • WATERLOO ROUTING • MÍMIR INTAKE</footer>
+        {data?.gap?.needs?.length ? (
+          <section className="mt-6 rounded-3xl border border-white/10 bg-white/[0.025] p-6">
+            <div className="text-xs tracking-[0.22em] text-amber-300">EVIDENCE NEED MAP</div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {data.gap.needs.map((need) => (
+                <div key={need.id} className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <div className="font-serif text-lg">{need.label}</div>
+                  <div className="mt-2 text-xs leading-5 text-slate-500">{need.rationale}</div>
+                  <div className="mt-3 font-mono text-[10px] text-violet-200">{need.status.replaceAll("_", " ")}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {(data?.guard || data?.plan?.epistemicGuard) && (
+          <section className="mt-6 rounded-3xl border border-violet-300/20 bg-violet-300/5 p-6">
+            <div className="text-xs tracking-[0.22em] text-violet-200">EPISTEMIC GUARD</div>
+            <p className="mt-2 leading-7 text-slate-300">{data.guard}</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">{data.plan?.epistemicGuard}</p>
+          </section>
+        )}
+
+        {data?.warnings?.length ? (
+          <section className="mt-6 rounded-3xl border border-amber-300/20 bg-amber-300/5 p-6 text-sm leading-6 text-amber-100/80">
+            {data.warnings.join(" ")}
+          </section>
+        ) : null}
+
+        <footer className="py-20 text-center text-sm text-slate-600">
+          ᛉ BIFRÖST • THREE-LANE PAGE DISCOVERY • WATERLOO ROUTING • MÍMIR INTAKE • ZOTERO RIS BRIDGE
+        </footer>
       </div>
     </main>
   );
 }
 
+function ResultCard({ item, index, channel, staged, onToggleStage }: {
+  item: QueueItem;
+  index: number;
+  channel: Channel;
+  staged: boolean;
+  onToggleStage: () => void;
+}) {
+  return (
+    <article className={`rounded-2xl border bg-black/30 p-5 transition ${staged ? "border-violet-300/30 shadow-lg shadow-violet-950/20" : "border-white/10"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className={channel === "scholarly" ? "font-mono text-xs text-amber-300" : "font-mono text-xs text-cyan-300"}>
+          {String(index + 1).padStart(2, "0")} / PRIORITY {item.priorityScore}
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {staged && <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-1 text-[10px] text-violet-100">MÍMIR STAGED</span>}
+          <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-slate-400">{item.downstreamMode.replaceAll("_", " ")}</span>
+          <span className={`rounded-full border px-2 py-1 text-[10px] ${item.waterloo.holdingsStatus === "OPEN_ACCESS" ? "border-emerald-300/20 bg-emerald-300/5 text-emerald-200" : "border-amber-300/20 bg-amber-300/5 text-amber-200"}`}>
+            {item.waterloo.holdingsStatus.replaceAll("_", " ")}
+          </span>
+        </div>
+      </div>
+
+      <h3 className="mt-3 font-serif text-xl leading-7 md:text-2xl">{item.title}</h3>
+      <div className="mt-2 text-sm text-slate-500">{item.authors?.slice(0, 4).join(", ") || "Authors unavailable"} • {item.year ?? "Year unknown"}</div>
+      {item.publicationTitle && (
+        <div className="mt-2 rounded-lg border border-amber-300/10 bg-amber-300/[0.03] px-3 py-2 text-xs text-amber-100/80">
+          <span className="font-mono text-[10px] text-amber-300">JOURNAL / PUBLICATION</span> • {item.publicationTitle}
+        </div>
+      )}
+      <div className="mt-2 font-mono text-[11px] text-slate-600">{item.normalizedDoi ? `DOI ${item.normalizedDoi}` : "DOI unavailable"} • {item.accessStatus ?? "ACCESS UNKNOWN"}</div>
+
+      <div className="mt-4 grid grid-cols-5 gap-2 text-center text-[10px] text-slate-500">
+        <Score label="TOPIC" value={item.scoreBreakdown.topicalRelevance} />
+        <Score label="GAP" value={item.scoreBreakdown.evidenceGapFit} />
+        <Score label="RECENT" value={item.scoreBreakdown.recency} />
+        <Score label="ACCESS" value={item.scoreBreakdown.access} />
+        <Score label="RIGHTS" value={item.scoreBreakdown.rightsPenalty} />
+      </div>
+
+      <div className="mt-4 rounded-xl border border-amber-300/10 bg-amber-300/[0.03] p-3 text-[11px] leading-5 text-slate-500">
+        <span className="font-mono text-amber-200">WATERLOO ROUTE</span> — {item.waterloo.researcherAction}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" onClick={onToggleStage} className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${staged ? "border-violet-300/35 bg-violet-300/15 text-violet-100 hover:bg-violet-300/20" : "border-violet-300/20 bg-violet-300/5 text-violet-200 hover:bg-violet-300/10"}`}>
+          {staged ? "REMOVE FROM MÍMIR ✓" : "QUEUE FOR MÍMIR +"}
+        </button>
+        {item.waterloo.omniJournalSearchUrl && <ActionLink href={item.waterloo.omniJournalSearchUrl} label="SEARCH JOURNAL IN WATERLOO ↗" tone="amberStrong" />}
+        <ActionLink href={item.waterloo.omniTitleSearchUrl} label="SEARCH ARTICLE IN WATERLOO ↗" tone="amber" />
+        {item.waterloo.omniDoiSearchUrl && <ActionLink href={item.waterloo.omniDoiSearchUrl} label="CHECK DOI IN WATERLOO ↗" tone="violet" />}
+        {item.route.doiResolverUrl && <ActionLink href={item.route.doiResolverUrl} label="OPEN DOI ↗" tone="cyan" />}
+        {item.route.directUrl && <ActionLink href={item.route.directUrl} label="OPEN WEB SOURCE ↗" tone="emerald" />}
+      </div>
+
+      <details className="mt-4 text-xs text-slate-500">
+        <summary className="cursor-pointer font-mono text-slate-400">RIGHTS + ROUTE GUARD</summary>
+        <p className="mt-2 leading-5">{item.waterloo.guard}</p>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <a className="text-violet-200 underline-offset-4 hover:underline" href={item.waterloo.aiUsePolicyUrl} target="_blank" rel="noreferrer">Waterloo AI-use policy ↗</a>
+          <a className="text-violet-200 underline-offset-4 hover:underline" href={item.waterloo.usageGuidelinesUrl} target="_blank" rel="noreferrer">Electronic-resource guidelines ↗</a>
+        </div>
+      </details>
+    </article>
+  );
+}
+
+function TrustedPageCard({ page, index }: { page: TrustedWebPage; index: number }) {
+  return (
+    <article className="rounded-2xl border border-emerald-300/15 bg-black/30 p-5 shadow-lg shadow-emerald-950/5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-xs text-emerald-300">{String(index + 1).padStart(2, "0")} / TRUST {page.priorityScore}</span>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full border border-emerald-300/15 bg-emerald-300/5 px-2 py-1 text-[10px] text-emerald-100">{page.kind.replaceAll("_", " ")}</span>
+          <span className="rounded-full border border-cyan-300/15 bg-cyan-300/5 px-2 py-1 text-[10px] text-cyan-100">PAGE VERIFIED DOMAIN</span>
+        </div>
+      </div>
+      <h3 className="mt-3 font-serif text-xl leading-7 md:text-2xl">{page.title}</h3>
+      <div className="mt-2 text-sm text-emerald-100/70">{page.sourceName}</div>
+      <div className="mt-1 font-mono text-[11px] text-slate-600">{page.domain}{page.publishedDate ? ` • ${page.publishedDate}` : ""}</div>
+      {page.snippet && <p className="mt-3 text-sm leading-6 text-slate-400">{page.snippet}</p>}
+      <div className="mt-3 rounded-xl border border-emerald-300/10 bg-emerald-300/[0.03] p-3 text-[11px] leading-5 text-slate-500">
+        BIFRÖST accepted this page only after its hostname matched the curated trusted-domain registry. Authority is a provenance signal, not a truth score.
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <ActionLink href={page.url} label="OPEN TRUSTED PAGE ↗" tone="emeraldStrong" />
+        <ActionLink href={page.sourceSearchUrl} label="SEARCH THIS SOURCE ↗" tone="emerald" />
+      </div>
+      {page.engines.length > 0 && <div className="mt-3 font-mono text-[10px] text-slate-700">DISCOVERED VIA {page.engines.join(" + ").toUpperCase()}</div>}
+    </article>
+  );
+}
+
+function TrustedRouteCard({ route, index, compact = false }: { route: TrustedWebRoute; index: number; compact?: boolean }) {
+  return (
+    <article className={`rounded-2xl border border-emerald-300/15 bg-black/30 ${compact ? "p-4" : "p-5"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-xs text-emerald-300">{String(index + 1).padStart(2, "0")} / TRUST {route.priorityScore}</span>
+        <span className="rounded-full border border-emerald-300/15 bg-emerald-300/5 px-2 py-1 text-[10px] text-emerald-100">{route.kind.replaceAll("_", " ")}</span>
+      </div>
+      <h3 className={`mt-3 font-serif ${compact ? "text-lg" : "text-xl md:text-2xl"}`}>{route.name}</h3>
+      <div className="mt-1 font-mono text-[11px] text-slate-600">{route.domain}</div>
+      {!compact && <p className="mt-3 text-sm leading-6 text-slate-400">{route.note}</p>}
+      {!compact && <div className="mt-3 rounded-xl border border-emerald-300/10 bg-emerald-300/[0.03] p-3 text-xs text-emerald-100/75">{route.rationale}</div>}
+      <div className="mt-4 flex flex-wrap gap-2"><ActionLink href={route.searchUrl} label="SEARCH THIS TRUSTED SOURCE ↗" tone="emerald" /></div>
+    </article>
+  );
+}
+
+function ActionLink({ href, label, tone }: { href: string; label: string; tone: "amberStrong" | "amber" | "violet" | "cyan" | "emerald" | "emeraldStrong" }) {
+  const cls = {
+    amberStrong: "border-amber-300/40 bg-amber-300/15 text-amber-100 hover:bg-amber-300/20",
+    amber: "border-amber-300/20 bg-amber-300/5 text-amber-200 hover:bg-amber-300/10",
+    violet: "border-violet-300/20 bg-violet-300/5 text-violet-200 hover:bg-violet-300/10",
+    cyan: "border-cyan-300/20 bg-cyan-300/5 text-cyan-200 hover:bg-cyan-300/10",
+    emerald: "border-emerald-300/20 bg-emerald-300/5 text-emerald-200 hover:bg-emerald-300/10",
+    emeraldStrong: "border-emerald-300/40 bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/20"
+  }[tone];
+  return <a href={href} target="_blank" rel="noreferrer" className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${cls}`}>{label}</a>;
+}
+
+function ChannelButton({ active, onClick, label, count, tone }: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+  tone: "amber" | "cyan" | "emerald";
+}) {
+  const activeClass = tone === "amber"
+    ? "border-amber-300/30 bg-amber-300/10 text-amber-100"
+    : tone === "emerald"
+      ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+      : "border-cyan-300/30 bg-cyan-300/10 text-cyan-100";
+  return (
+    <button type="button" onClick={onClick} className={`rounded-xl border px-3 py-3 text-xs font-semibold tracking-wide transition ${active ? activeClass : "border-transparent text-slate-500 hover:bg-white/[0.04] hover:text-slate-300"}`}>
+      {label} <span className="ml-1 font-mono">{count}</span>
+    </button>
+  );
+}
+
 function Metric({ label, value }: { label: string; value: string | number }) {
   return <div className="rounded-xl border border-white/10 bg-black/30 p-3"><div className="font-serif text-2xl text-slate-100">{value}</div><div className="mt-1 text-[9px] tracking-wider text-slate-600">{label}</div></div>;
+}
+
+function Score({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-lg border border-white/5 bg-black/30 p-2"><div className={value < 0 ? "text-rose-300" : "text-cyan-200"}>{value}</div><div className="mt-1">{label}</div></div>;
+}
+
+function RealmStatus({ name, detail, tone }: { name: string; detail: string; tone: "cyan" | "amber" }) {
+  const cls = tone === "cyan" ? "border-cyan-300/15 bg-cyan-300/5 text-cyan-100" : "border-amber-300/15 bg-amber-300/5 text-amber-100";
+  return <div className={`rounded-2xl border p-4 ${cls}`}><div className="font-serif text-lg">{name}</div><div className="mt-1 font-mono text-[10px] text-slate-400">{detail}</div></div>;
 }

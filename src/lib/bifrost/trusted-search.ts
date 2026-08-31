@@ -16,9 +16,9 @@ export type TrustedWebPageResult = {
 
 export type TrustedWebPageDiscovery = {
   status: "AVAILABLE" | "DEGRADED" | "UNAVAILABLE";
-  mode: "PAGE_LEVEL_BIFROST_RELAY" | "PAGE_LEVEL_SEARXNG" | "PAGE_LEVEL_BING_RSS" | "CURATED_ROUTE_FALLBACK";
+  mode: "PAGE_LEVEL_SEARXNG" | "PAGE_LEVEL_BING_RSS" | "CURATED_ROUTE_FALLBACK";
   backend: string;
-  backendTrust: "AUTHENTICATED_BIFROST_RELAY" | "CONFIGURED_PRIVATE_OR_MANAGED" | "PUBLIC_SEARCH_FALLBACK";
+  backendTrust: "CONFIGURED_PRIVATE_OR_MANAGED" | "PUBLIC_SEARCH_FALLBACK";
   queryCount: number;
   resultCount: number;
   results: TrustedWebPageResult[];
@@ -164,20 +164,14 @@ function parseBingRss(xml: string): RawSearchResult[] {
   return results;
 }
 
-async function fetchWithTimeout(
-  url: URL,
-  accept: string,
-  timeoutMs = 6500,
-  extraHeaders: Record<string, string> = {}
-): Promise<Response> {
+async function fetchWithTimeout(url: URL, accept: string, timeoutMs = 6500): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
       headers: {
         Accept: accept,
-        "User-Agent": "MAINLAND-MYTHOS-BIFROST/0.5.0 (human-directed personal research)",
-        ...extraHeaders
+        "User-Agent": "MAINLAND-MYTHOS-BIFROST/0.4.2 (human-directed personal research)"
       },
       signal: controller.signal,
       cache: "no-store"
@@ -187,12 +181,7 @@ async function fetchWithTimeout(
   }
 }
 
-async function searchSearx(
-  baseUrl: string,
-  query: string,
-  bearerToken?: string
-): Promise<{ results: RawSearchResult[]; warning?: string }> {
-  const authHeaders = bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {};
+async function searchSearx(baseUrl: string, query: string): Promise<{ results: RawSearchResult[]; warning?: string }> {
   try {
     const endpoint = new URL("/search", `${baseUrl.replace(/\/$/, "")}/`);
     endpoint.searchParams.set("q", query);
@@ -202,9 +191,8 @@ async function searchSearx(
     endpoint.searchParams.set("safesearch", "1");
     endpoint.searchParams.set("pageno", "1");
 
-    const response = await fetchWithTimeout(endpoint, "application/json,text/html;q=0.8", 6500, authHeaders);
-    if (response.status === 401) return { results: [], warning: "BIFRÖST Relay rejected the configured bearer token (HTTP 401)." };
-    if (response.status === 429) return { results: [], warning: "Configured SearXNG/Relay rate-limited the request; BIFRÖST stopped without retrying." };
+    const response = await fetchWithTimeout(endpoint, "application/json,text/html;q=0.8");
+    if (response.status === 429) return { results: [], warning: "Configured SearXNG rate-limited the request; BIFRÖST stopped without retrying." };
 
     const contentType = response.headers.get("content-type") ?? "";
     if (response.ok && contentType.includes("application/json")) {
@@ -218,17 +206,16 @@ async function searchSearx(
       htmlEndpoint.searchParams.set("categories", "general");
       htmlEndpoint.searchParams.set("language", "en");
       htmlEndpoint.searchParams.set("safesearch", "1");
-      const htmlResponse = await fetchWithTimeout(htmlEndpoint, "text/html", 6500, authHeaders);
-      if (htmlResponse.status === 401) return { results: [], warning: "BIFRÖST Relay rejected the configured bearer token during HTML fallback (HTTP 401)." };
-      if (htmlResponse.status === 429) return { results: [], warning: "Configured SearXNG/Relay HTML fallback was rate-limited; BIFRÖST stopped without retrying." };
-      if (!htmlResponse.ok) return { results: [], warning: `Configured SearXNG/Relay returned HTTP ${htmlResponse.status}.` };
+      const htmlResponse = await fetchWithTimeout(htmlEndpoint, "text/html");
+      if (htmlResponse.status === 429) return { results: [], warning: "Configured SearXNG HTML fallback was rate-limited; BIFRÖST stopped without retrying." };
+      if (!htmlResponse.ok) return { results: [], warning: `Configured SearXNG returned HTTP ${htmlResponse.status}.` };
       const parsed = parseSearxHtml(await htmlResponse.text());
-      return { results: parsed, warning: parsed.length ? "Configured SearXNG used HTML fallback because JSON output was unavailable." : "Configured SearXNG/Relay returned no parseable results." };
+      return { results: parsed, warning: parsed.length ? "Configured SearXNG used HTML fallback because JSON output was unavailable." : "Configured SearXNG returned no parseable results." };
     }
 
-    return { results: [], warning: `Configured SearXNG/Relay returned HTTP ${response.status}.` };
+    return { results: [], warning: `Configured SearXNG returned HTTP ${response.status}.` };
   } catch (error) {
-    return { results: [], warning: `Configured SearXNG/Relay failed gracefully: ${error instanceof Error ? error.message : "unknown error"}.` };
+    return { results: [], warning: `Configured SearXNG failed gracefully: ${error instanceof Error ? error.message : "unknown error"}.` };
   }
 }
 
@@ -305,15 +292,11 @@ export async function discoverTrustedWebPages(input: {
   const maxResults = Math.max(5, Math.min(input.maxResults ?? 35, 50));
   const routes = buildTrustedWebRoutes(question, 30);
   const configuredSearx = process.env.BIFROST_SEARXNG_URL?.trim();
-  const relayToken = process.env.BIFROST_RELAY_TOKEN?.trim();
   const useSearx = Boolean(configuredSearx);
-  const authenticatedRelay = Boolean(configuredSearx && relayToken);
   const backend = configuredSearx || "https://www.bing.com/search?format=rss";
-  const backendTrust: TrustedWebPageDiscovery["backendTrust"] = authenticatedRelay
-    ? "AUTHENTICATED_BIFROST_RELAY"
-    : configuredSearx
-      ? "CONFIGURED_PRIVATE_OR_MANAGED"
-      : "PUBLIC_SEARCH_FALLBACK";
+  const backendTrust: TrustedWebPageDiscovery["backendTrust"] = configuredSearx
+    ? "CONFIGURED_PRIVATE_OR_MANAGED"
+    : "PUBLIC_SEARCH_FALLBACK";
   const warnings: string[] = [];
 
   if (!question || !routes.length) {
@@ -330,17 +313,17 @@ export async function discoverTrustedWebPages(input: {
     };
   }
 
-  // Private/managed SearXNG and the authenticated BIFROST Relay can efficiently
-  // search several trusted domains in one query. The no-key Bing RSS fallback is
-  // deliberately more surgical: search the top five authority-ranked domains individually.
+  // Private/managed SearXNG can efficiently search several trusted domains in one query.
+  // The no-key Bing RSS fallback is deliberately more surgical: search the top five
+  // authority-ranked domains individually so each feed can return real page-level hits.
   const routeGroups = useSearx
-    ? [routes.slice(0, 10), routes.slice(10, 20), routes.slice(20, 30)].filter((group) => group.length > 0)
+    ? [routes.slice(0, 10), routes.slice(10, 20)].filter((group) => group.length > 0)
     : routes.slice(0, 5).map((route) => [route]);
 
   const searches = await Promise.all(
     routeGroups.map((group) => {
       const query = buildDomainQuery(question, group);
-      return useSearx ? searchSearx(configuredSearx as string, query, relayToken) : searchBingRss(query);
+      return useSearx ? searchSearx(configuredSearx as string, query) : searchBingRss(query);
     })
   );
 
@@ -348,14 +331,12 @@ export async function discoverTrustedWebPages(input: {
   const results = rankResults(question, searches.map((search) => search.results), routes, maxResults);
 
   if (!configuredSearx) {
-    warnings.push("Trusted Web is using Bing RSS as a no-key personal-research fallback with five source-specific searches. Set BIFROST_SEARXNG_URL and BIFROST_RELAY_TOKEN to move this lane onto the authenticated MAINLAND MYTHOS BIFROST Relay.");
-  } else if (!relayToken) {
-    warnings.push("BIFROST_SEARXNG_URL is configured without BIFROST_RELAY_TOKEN. This may be valid for a private network endpoint, but do not expose an unauthenticated SearXNG-compatible endpoint publicly.");
+    warnings.push("Trusted Web is using Bing RSS as a no-key personal-research fallback with five source-specific searches. Set BIFROST_SEARXNG_URL to move this lane to a private or managed MAINLAND MYTHOS SearXNG endpoint.");
   }
 
   if (!results.length) {
     return {
-      status: warnings.some((warning) => /rate-limited|failed|HTTP|rejected/i.test(warning)) ? "UNAVAILABLE" : "DEGRADED",
+      status: warnings.some((warning) => /rate-limited|failed|HTTP/i.test(warning)) ? "UNAVAILABLE" : "DEGRADED",
       mode: "CURATED_ROUTE_FALLBACK",
       backend,
       backendTrust,
@@ -368,12 +349,8 @@ export async function discoverTrustedWebPages(input: {
   }
 
   return {
-    status: configuredSearx && warnings.length === 0 ? "AVAILABLE" : "DEGRADED",
-    mode: authenticatedRelay
-      ? "PAGE_LEVEL_BIFROST_RELAY"
-      : configuredSearx
-        ? "PAGE_LEVEL_SEARXNG"
-        : "PAGE_LEVEL_BING_RSS",
+    status: configuredSearx && !warnings.length ? "AVAILABLE" : "DEGRADED",
+    mode: configuredSearx ? "PAGE_LEVEL_SEARXNG" : "PAGE_LEVEL_BING_RSS",
     backend,
     backendTrust,
     queryCount: routeGroups.length,
