@@ -26,6 +26,7 @@ type CrossrefLicense = {
 type CrossrefItem = {
   DOI?: string;
   title?: string[];
+  "container-title"?: string[];
   author?: CrossrefAuthor[];
   published?: CrossrefDate;
   "published-print"?: CrossrefDate;
@@ -141,7 +142,7 @@ function containsAny(text: string, phrases: string[]): boolean {
 
 function candidatePassesAnchors(question: string, candidate: Candidate): boolean {
   const q = normalizeTitle(question);
-  const body = [candidate.title, candidate.abstract ?? "", ...(candidate.keywords ?? [])].join(" ");
+  const body = [candidate.title, candidate.publicationTitle ?? "", candidate.abstract ?? "", ...(candidate.keywords ?? [])].join(" ");
 
   const questionHasAi = containsAny(q, AI_ANCHORS);
   const questionHasChild = containsAny(q, CHILD_ANCHORS);
@@ -166,12 +167,14 @@ function toCandidate(item: CrossrefItem, evidenceGapTags: string[]): Candidate |
   const title = item.title?.[0]?.trim();
   if (!title) return undefined;
 
+  const publicationTitle = item["container-title"]?.[0]?.trim() || undefined;
   const doi = normalizeDoi(item.DOI);
   const openLicense = hasClearlyOpenLicense(item);
 
   return {
     id: doi ? `crossref:${doi}` : undefined,
     title,
+    publicationTitle,
     authors: (item.author ?? []).map(authorName).filter((value): value is string => Boolean(value)),
     year: firstYear(item),
     doi,
@@ -259,6 +262,7 @@ export async function discoverCrossref(input: {
 
         byKey.set(key, {
           ...existing,
+          publicationTitle: existing.publicationTitle ?? candidate.publicationTitle,
           evidenceGapTags: [...new Set([...(existing.evidenceGapTags ?? []), ...(candidate.evidenceGapTags ?? [])])],
           keywords: [...new Set([...(existing.keywords ?? []), ...(candidate.keywords ?? [])])]
         });
