@@ -11,6 +11,7 @@ export type RightsStatus = "PERMITTED" | "RESTRICTED" | "UNKNOWN";
 export type Candidate = {
   id?: string;
   title: string;
+  publicationTitle?: string;
   authors?: string[];
   year?: number;
   doi?: string;
@@ -177,6 +178,7 @@ export function planAcquisition(input: {
     const normalizedTitle = normalizeTitle(candidate.title);
     const body = [
       candidate.title,
+      candidate.publicationTitle ?? "",
       candidate.abstract ?? "",
       ...(candidate.keywords ?? []),
       ...(candidate.evidenceGapTags ?? [])
