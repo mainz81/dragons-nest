@@ -148,9 +148,21 @@ function candidatePassesAnchors(question: string, candidate: Candidate): boolean
   const questionHasChild = containsAny(q, CHILD_ANCHORS);
   const questionHasRelation = containsAny(q, RELATION_ANCHORS);
 
-  if (questionHasAi && !containsAny(body, AI_ANCHORS)) return false;
-  if (questionHasChild && !containsAny(body, CHILD_ANCHORS)) return false;
-  if (questionHasRelation && !containsAny(body, RELATION_ANCHORS)) return false;
+  const aiMatch = containsAny(body, AI_ANCHORS);
+  const childMatch = containsAny(body, CHILD_ANCHORS);
+  const relationMatch = containsAny(body, RELATION_ANCHORS);
+
+  // AI remains a hard anchor when the question is explicitly about AI.
+  if (questionHasAi && !aiMatch) return false;
+
+  // For multi-concept questions, require at least one additional conceptual anchor.
+  // Ranking handles the difference between a partial and a near-perfect match.
+  const secondaryRequirements = [
+    questionHasChild ? childMatch : undefined,
+    questionHasRelation ? relationMatch : undefined
+  ].filter((value): value is boolean => typeof value === "boolean");
+
+  if (secondaryRequirements.length > 0 && !secondaryRequirements.some(Boolean)) return false;
   return true;
 }
 
@@ -193,7 +205,7 @@ async function requestCrossref(url: string, retry = true): Promise<Response> {
   const response = await fetch(url, {
     headers: {
       Accept: "application/json",
-      "User-Agent": "MAINLAND-MYTHOS-BIFROST/0.2.1 (https://dragons-nest.vercel.app/bifrost)"
+      "User-Agent": "MAINLAND-MYTHOS-BIFROST/0.3.1 (https://dragons-nest.vercel.app/bifrost)"
     },
     next: { revalidate: 86400 }
   });
@@ -239,8 +251,8 @@ export async function discoverCrossref(input: {
   queries: Array<{ query: string; evidenceGapTags: string[] }>;
   rowsPerQuery?: number;
 }): Promise<CrossrefDiscovery> {
-  const rowsPerQuery = Math.max(3, Math.min(input.rowsPerQuery ?? 8, 15));
-  const queries = input.queries.filter((entry) => entry.query.trim()).slice(0, 3);
+  const rowsPerQuery = Math.max(5, Math.min(input.rowsPerQuery ?? 15, 25));
+  const queries = input.queries.filter((entry) => entry.query.trim()).slice(0, 5);
   const warnings: string[] = [];
   const byKey = new Map<string, Candidate>();
   let successfulQueries = 0;
@@ -271,7 +283,7 @@ export async function discoverCrossref(input: {
       warnings.push(`Crossref query ${index + 1} failed: ${error instanceof Error ? error.message : "unknown error"}`);
     }
 
-    if (index < queries.length - 1) await sleep(450);
+    if (index < queries.length - 1) await sleep(300);
   }
 
   if (!successfulQueries) {
