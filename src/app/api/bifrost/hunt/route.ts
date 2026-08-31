@@ -4,7 +4,7 @@ import { discoverCrossref } from "@/lib/bifrost/crossref";
 import { planAcquisition } from "@/lib/bifrost/engine";
 import { buildWaterlooRoute, discoverOpenAlex, mergeScholarlyCandidates } from "@/lib/bifrost/e3";
 import { detectEvidenceGaps } from "@/lib/bifrost/gap";
-import { buildTrustedWebRoutes } from "@/lib/bifrost/trusted-web";
+import { discoverTrustedWebPages } from "@/lib/bifrost/trusted-search";
 
 const holdingSchema = z.object({
   title: z.string().min(1),
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
           : [gap.needs[index - 1]?.label ?? "question relevance"]
     }));
 
-    const [crossref, openAlex] = await Promise.all([
+    const [crossref, openAlex, trustedWeb] = await Promise.all([
       discoverCrossref({
         question: body.question,
         queries: discoveryQueries,
@@ -58,10 +58,13 @@ export async function POST(request: Request) {
         question: body.question,
         evidenceGapTags: gap.needs.map((need) => need.label),
         perPage: Math.min(body.rowsPerQuery, 50)
+      }),
+      discoverTrustedWebPages({
+        question: body.question,
+        maxResults: 40
       })
     ]);
 
-    const trustedWeb = buildTrustedWebRoutes(body.question, 30);
     const combinedCandidates = mergeScholarlyCandidates(crossref.candidates, openAlex.candidates);
     const scholarlyCandidates = crossref.candidates.filter((candidate) => Boolean(candidate.publicationTitle));
     const journalPool = scholarlyCandidates.length ? scholarlyCandidates : crossref.candidates;
@@ -95,14 +98,15 @@ export async function POST(request: Request) {
     const warnings = [
       ...crossref.warnings,
       ...openAlex.warnings,
+      ...trustedWeb.warnings,
       ...mergedPlan.warnings
     ];
 
     return NextResponse.json({
       ok: true,
-      phase: "IV-E4B",
-      version: "0.4.1",
-      mode: "HUGINN_THREE_LANE_DISCOVERY_PLUS_MIMIR_INTAKE",
+      phase: "IV-E4C",
+      version: "0.4.2",
+      mode: "HUGINN_THREE_LANE_PAGE_LEVEL_DISCOVERY_PLUS_MIMIR_INTAKE",
       discovery: {
         source: "HUGINN",
         combinedCandidateCount: combinedCandidates.length,
@@ -117,9 +121,13 @@ export async function POST(request: Request) {
           candidateCount: openAlex.candidateCount
         },
         trustedWeb: {
-          status: "AVAILABLE",
-          sourceCount: trustedWeb.length,
-          mode: "CURATED_AUTHORITATIVE_SEARCH_ROUTES"
+          status: trustedWeb.status,
+          sourceCount: trustedWeb.routes.length,
+          pageResultCount: trustedWeb.resultCount,
+          queryCount: trustedWeb.queryCount,
+          mode: trustedWeb.mode,
+          backend: trustedWeb.backend,
+          backendTrust: trustedWeb.backendTrust
         }
       },
       channels: {
@@ -138,10 +146,17 @@ export async function POST(request: Request) {
         },
         trustedWeb: {
           label: "HUGINN TRUSTED WEB",
-          source: "CURATED_AUTHORITATIVE_REGISTRY",
-          candidateCount: trustedWeb.length,
-          routes: trustedWeb,
-          guard: "Trusted Web is a curated non-journal lane. These are ranked authoritative source gateways with the research question pre-filled, not claims that each destination already contains a relevant page. Wikipedia is intentionally excluded from this lane."
+          source: trustedWeb.mode === "PAGE_LEVEL_SEARXNG" ? "SEARXNG_TRUSTED_DOMAIN_FILTER" : "CURATED_AUTHORITATIVE_REGISTRY",
+          sourceStatus: trustedWeb.status,
+          mode: trustedWeb.mode,
+          backend: trustedWeb.backend,
+          backendTrust: trustedWeb.backendTrust,
+          candidateCount: trustedWeb.resultCount,
+          pageResults: trustedWeb.results,
+          routes: trustedWeb.routes,
+          guard: trustedWeb.resultCount
+            ? "Trusted Web now contains actual page-level search results returned by SearXNG and then filtered against BIFRÖST's curated authoritative-domain registry. Wikipedia and non-registry domains are rejected. Source authority is not the same as claim truth; open each page and inspect its evidence and date."
+            : "Page-level trusted-web search was unavailable or returned no trusted-domain pages, so BIFRÖST has fallen back to ranked authoritative source gateways. No absence inference is permitted."
         }
       },
       waterloo: {
@@ -154,7 +169,7 @@ export async function POST(request: Request) {
       plan: mergedPlan,
       warnings,
       guard:
-        "Huginn now separates formal scholarship, scholarly research-web discovery, and a curated trusted non-journal web lane. BIFRÖST creates pre-filled Waterloo Omni searches but does not claim Waterloo holdings or alumni entitlement until Omni confirms them. Trusted-web entries are authoritative search routes, not fabricated search results."
+        "Huginn separates formal scholarship, scholarly research-web discovery, and trusted non-journal page-level web discovery. Trusted Web is domain-filtered after search and does not treat source reputation as proof of any claim. BIFRÖST creates pre-filled Waterloo Omni searches but does not claim Waterloo holdings or alumni entitlement until Omni confirms them."
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -167,8 +182,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "BIFROST_IV_E4B_FAILURE",
-        message: error instanceof Error ? error.message : "Unknown IV-E4B error"
+        error: "BIFROST_IV_E4C_FAILURE",
+        message: error instanceof Error ? error.message : "Unknown IV-E4C error"
       },
       { status: 500 }
     );
