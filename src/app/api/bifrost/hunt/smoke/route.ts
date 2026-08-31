@@ -5,6 +5,7 @@ import { buildWaterlooRoute, discoverOpenAlex, mergeScholarlyCandidates } from "
 import { detectEvidenceGaps } from "@/lib/bifrost/gap";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const question = "How are children forming relationships with conversational AI?";
