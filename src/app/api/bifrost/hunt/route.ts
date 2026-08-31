@@ -5,6 +5,7 @@ import { planAcquisition } from "@/lib/bifrost/engine";
 import { buildWaterlooRoute, discoverOpenAlex, mergeScholarlyCandidates } from "@/lib/bifrost/e3";
 import { detectEvidenceGaps } from "@/lib/bifrost/gap";
 import { discoverTrustedWebPages } from "@/lib/bifrost/trusted-search";
+import { discoverTrustedRelayPages } from "@/lib/bifrost/relay-search";
 
 const holdingSchema = z.object({
   title: z.string().min(1),
@@ -48,6 +49,22 @@ export async function POST(request: Request) {
           : [gap.needs[index - 1]?.label ?? "question relevance"]
     }));
 
+    const relayUrl = process.env.BIFROST_RELAY_URL?.trim();
+    const relayToken = process.env.BIFROST_RELAY_TOKEN?.trim();
+    const relayConfigured = Boolean(relayUrl && relayToken);
+
+    const trustedWebPromise = relayConfigured
+      ? discoverTrustedRelayPages({
+          question: body.question,
+          relayUrl: relayUrl as string,
+          relayToken: relayToken as string,
+          maxResults: 50
+        })
+      : discoverTrustedWebPages({
+          question: body.question,
+          maxResults: 40
+        });
+
     const [crossref, openAlex, trustedWeb] = await Promise.all([
       discoverCrossref({
         question: body.question,
@@ -59,10 +76,7 @@ export async function POST(request: Request) {
         evidenceGapTags: gap.needs.map((need) => need.label),
         perPage: Math.min(body.rowsPerQuery, 50)
       }),
-      discoverTrustedWebPages({
-        question: body.question,
-        maxResults: 40
-      })
+      trustedWebPromise
     ]);
 
     const combinedCandidates = mergeScholarlyCandidates(crossref.candidates, openAlex.candidates);
@@ -102,17 +116,19 @@ export async function POST(request: Request) {
       ...mergedPlan.warnings
     ];
 
-    const trustedPageSource = trustedWeb.mode === "PAGE_LEVEL_SEARXNG"
-      ? "SEARXNG_TRUSTED_DOMAIN_FILTER"
-      : trustedWeb.mode === "PAGE_LEVEL_BING_RSS"
-        ? "BING_RSS_TRUSTED_DOMAIN_FILTER"
-        : "CURATED_AUTHORITATIVE_REGISTRY";
+    const trustedPageSource = trustedWeb.mode === "PAGE_LEVEL_BIFROST_RELAY"
+      ? "BIFROST_RELAY_TRUSTED_DOMAIN_FILTER"
+      : trustedWeb.mode === "PAGE_LEVEL_SEARXNG"
+        ? "SEARXNG_TRUSTED_DOMAIN_FILTER"
+        : trustedWeb.mode === "PAGE_LEVEL_BING_RSS"
+          ? "BING_RSS_TRUSTED_DOMAIN_FILTER"
+          : "CURATED_AUTHORITATIVE_REGISTRY";
 
     return NextResponse.json({
       ok: true,
-      phase: "IV-E4C",
-      version: "0.4.2",
-      mode: "HUGINN_THREE_LANE_PAGE_LEVEL_DISCOVERY_PLUS_MIMIR_INTAKE",
+      phase: "IV-E5A",
+      version: "0.5.0",
+      mode: "HUGINN_THREE_LANE_PAGE_DISCOVERY_WITH_OPTIONAL_AUTHENTICATED_RELAY",
       discovery: {
         source: "HUGINN",
         combinedCandidateCount: combinedCandidates.length,
@@ -161,9 +177,16 @@ export async function POST(request: Request) {
           pageResults: trustedWeb.results,
           routes: trustedWeb.routes,
           guard: trustedWeb.resultCount
-            ? "Trusted Web now contains actual page-level search results returned by the active web-search backend and then filtered against BIFRÖST's curated authoritative-domain registry. Wikipedia and non-registry domains are rejected. Source authority is not the same as claim truth; open each page and inspect its evidence and date."
-            : "Page-level trusted-web search was unavailable or returned no trusted-domain pages, so BIFRÖST has fallen back to ranked authoritative source gateways. No absence inference is permitted."
+            ? "Trusted Web contains actual page-level results filtered against BIFRÖST's curated authoritative-domain registry. When the authenticated Relay is active, Vercel talks only to the Relay; the local SearXNG port remains private. Wikipedia and non-registry domains are rejected. Source authority is not the same as claim truth."
+            : "Page-level trusted-web discovery was unavailable or returned no trusted-domain pages. BIFRÖST therefore preserves the authoritative gateway fallback and permits no absence inference."
         }
+      },
+      relay: {
+        configured: relayConfigured,
+        mode: relayConfigured ? "AUTHENTICATED_BIFROST_RELAY" : "PUBLIC_FALLBACK",
+        expectedEnvironment: ["BIFROST_RELAY_URL", "BIFROST_RELAY_TOKEN"],
+        tokenExposureToBrowser: false,
+        directSearxngPortRequiredPublic: false
       },
       waterloo: {
         routing: "OMNI_DEEP_LINKS_WITH_ARTICLE_DOI_AND_JOURNAL_PREFILL",
@@ -175,7 +198,7 @@ export async function POST(request: Request) {
       plan: mergedPlan,
       warnings,
       guard:
-        "Huginn separates formal scholarship, scholarly research-web discovery, and trusted non-journal page-level web discovery. Trusted Web is domain-filtered after search and does not treat source reputation as proof of any claim. BIFRÖST creates pre-filled Waterloo Omni searches but does not claim Waterloo holdings or alumni entitlement until Omni confirms them."
+        "Huginn separates formal scholarship, scholarly research-web discovery, and trusted non-journal page-level discovery. The authenticated BIFRÖST Relay can bridge Vercel to local SearXNG without exposing SearXNG or Waterloo credentials. Trusted-domain filtering is a source-quality gate, not a truth score."
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -188,8 +211,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "BIFROST_IV_E4C_FAILURE",
-        message: error instanceof Error ? error.message : "Unknown IV-E4C error"
+        error: "BIFROST_IV_E5A_FAILURE",
+        message: error instanceof Error ? error.message : "Unknown IV-E5A error"
       },
       { status: 500 }
     );
