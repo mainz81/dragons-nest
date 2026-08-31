@@ -18,7 +18,7 @@ export type EvidenceNeed = {
 
 export type GapAssessment = {
   phase: "IV-E2";
-  version: "0.2.0";
+  version: "0.2.1";
   mimirContext: "AVAILABLE" | "UNAVAILABLE";
   question: string;
   needs: EvidenceNeed[];
@@ -39,7 +39,7 @@ const NEEDS = [
     label: "Measurement and construct validity",
     triggers: ["relationship", "trust", "attachment", "companionship", "dependency", "reliance", "bond", "social"],
     rationale: "Separate adjacent constructs such as trust, companionship, anthropomorphism, disclosure, reliance, and attachment-like expectations.",
-    queryHint: "measurement scale validation trust companionship anthropomorphism"
+    queryHint: "measurement trust companionship anthropomorphism"
   },
   {
     id: "developmental",
@@ -53,16 +53,22 @@ const NEEDS = [
     label: "Theory synthesis",
     triggers: ["relationship", "social", "attachment", "parasocial", "anthropomorphism", "companion", "companionship"],
     rationale: "Connect findings to established theories rather than treating conversational AI as an isolated phenomenon.",
-    queryHint: "systematic review theory attachment parasocial anthropomorphism"
+    queryHint: "systematic review attachment parasocial anthropomorphism"
   },
   {
     id: "outcomes",
     label: "Outcomes and boundary conditions",
     triggers: ["relationship", "trust", "reliance", "dependency", "children", "adolescent"],
     rationale: "Identify when relational engagement is benign, helpful, misleading, or associated with problematic reliance.",
-    queryHint: "outcomes reliance dependency wellbeing boundary conditions"
+    queryHint: "outcomes reliance dependency wellbeing"
   }
 ] as const;
+
+const QUERY_STOP = new Set([
+  "the", "a", "an", "and", "or", "of", "to", "in", "for", "on", "with", "by", "is", "are",
+  "was", "were", "be", "being", "been", "how", "what", "why", "when", "where", "who", "which",
+  "that", "this", "these", "those", "from", "into", "as", "do", "does", "did"
+]);
 
 function textOfHolding(holding: MimirHolding): string {
   return normalizeTitle([
@@ -74,6 +80,13 @@ function textOfHolding(holding: MimirHolding): string {
 
 function includesTrigger(text: string, trigger: string): boolean {
   return text.includes(normalizeTitle(trigger));
+}
+
+function compactResearchQuery(question: string): string {
+  const terms = normalizeTitle(question)
+    .split(" ")
+    .filter((term) => (term.length > 2 || term === "ai") && !QUERY_STOP.has(term));
+  return [...new Set(terms)].slice(0, 10).join(" ");
 }
 
 export function detectEvidenceGaps(input: {
@@ -111,18 +124,19 @@ export function detectEvidenceGaps(input: {
     };
   });
 
+  const baseQuery = compactResearchQuery(question) || question;
   const queryVariants = [
-    question,
-    ...needs.slice(0, 4).map((need) => `${question} ${need.queryHint}`)
+    baseQuery,
+    ...needs.slice(0, 2).map((need) => `${baseQuery} ${need.queryHint}`)
   ];
 
   return {
     phase: "IV-E2",
-    version: "0.2.0",
+    version: "0.2.1",
     mimirContext: holdings.length ? "AVAILABLE" : "UNAVAILABLE",
     question,
     needs,
-    queryVariants: [...new Set(queryVariants)].slice(0, 5),
+    queryVariants: [...new Set(queryVariants)].slice(0, 3),
     guard: holdings.length
       ? "A local title or keyword match indicates possible Mimir coverage, not that the evidence need is satisfied. Passage-level review remains authoritative."
       : "Mimir holdings were not supplied to this public BIFROST runtime. These are question-derived evidence needs, not claims that the local scholarly library lacks them."
