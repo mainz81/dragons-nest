@@ -182,8 +182,8 @@ export default function BifrostClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           question,
-          maxAcquire: 12,
-          rowsPerQuery: 18
+          maxAcquire: 50,
+          rowsPerQuery: 50
         })
       });
       setData((await response.json()) as HuntResponse);
@@ -268,7 +268,7 @@ export default function BifrostClient() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-100">
-              HUGINN DUAL-CHANNEL DISCOVERY
+              HUGINN DEEP RESEARCH DISCOVERY
             </div>
             <div className="rounded-full border border-violet-300/20 bg-violet-300/5 px-3 py-2 text-xs text-violet-100">
               MÍMIR INTAKE {intake.length}
@@ -282,7 +282,7 @@ export default function BifrostClient() {
             Search wide. Rank hard. Carry only what matters.
           </h1>
           <p className="mt-6 max-w-4xl text-lg leading-8 text-slate-400">
-            BIFRÖST now moves beyond discovery. Rank scholarly publications and Huginn research-web results, cross into Waterloo with article, DOI, or journal already filled in, then stage the strongest sources in a persistent Mímir Intake Dock and export clean metadata directly into Zotero-compatible RIS.
+            BIFRÖST can now rank up to fifty crossings in each research channel when enough relevant material exists. Scholarly Journals is the formal publication lane; Huginn Research Web is currently an independent scholarly-web lens built from OpenAlex and public publisher/repository metadata. A separate trusted non-journal reference lane is the next clean expansion.
           </p>
         </section>
 
@@ -300,13 +300,13 @@ export default function BifrostClient() {
                 disabled={loading || question.trim().length < 3}
                 className="mt-4 w-full rounded-2xl bg-gradient-to-r from-cyan-200 via-sky-200 to-amber-200 px-5 py-4 font-bold text-slate-950 transition hover:brightness-110 disabled:opacity-50"
               >
-                {loading ? "HUGINN IS FLYING DEEP…" : "ᛉ LAUNCH DEEP HUGINN + BIFRÖST"}
+                {loading ? "HUGINN IS FLYING DEEP…" : "ᛉ LAUNCH 50-DEEP HUGINN + BIFRÖST"}
               </button>
 
               <div className="mt-6 grid grid-cols-2 gap-3 text-center">
                 <Metric label="DISCOVERED" value={data?.discovery?.combinedCandidateCount ?? "—"} />
                 <Metric label="JOURNAL RANKED" value={journalCount || "—"} />
-                <Metric label="WEB RANKED" value={webCount || "—"} />
+                <Metric label="RESEARCH WEB" value={webCount || "—"} />
                 <Metric label="MÍMIR INTAKE" value={intake.length} />
               </div>
 
@@ -415,7 +415,7 @@ export default function BifrostClient() {
                 <ChannelButton
                   active={channel === "web"}
                   onClick={() => setChannel("web")}
-                  label="HUGINN WEB RESULTS"
+                  label="HUGINN RESEARCH WEB"
                   count={webCount}
                   tone="cyan"
                 />
@@ -424,7 +424,7 @@ export default function BifrostClient() {
 
             {!data && (
               <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-10 text-center text-slate-500">
-                Launch the deep hunt. BIFRÖST will rank up to twelve results in each discovery channel.
+                Launch the deep hunt. BIFRÖST can rank up to fifty results in each research channel.
               </div>
             )}
 
@@ -496,7 +496,7 @@ export default function BifrostClient() {
         ) : null}
 
         <footer className="py-20 text-center text-sm text-slate-600">
-          ᛉ BIFRÖST • HUGINN DUAL CHANNEL • WATERLOO ROUTING • MÍMIR INTAKE • ZOTERO RIS BRIDGE
+          ᛉ BIFRÖST • FIFTY-DEEP DISCOVERY • WATERLOO ROUTING • MÍMIR INTAKE • ZOTERO RIS BRIDGE
         </footer>
       </div>
     </main>
