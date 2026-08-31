@@ -216,7 +216,7 @@ export function planAcquisition(input: {
     a.normalizedTitle.localeCompare(b.normalizedTitle)
   );
 
-  const maxAcquire = Math.max(1, Math.min(input.maxAcquire ?? 5, 12));
+  const maxAcquire = Math.max(1, Math.min(input.maxAcquire ?? 25, 50));
   const queue = planned.filter((c) => c.priorityScore > 0).slice(0, maxAcquire);
 
   const warnings: string[] = [];
