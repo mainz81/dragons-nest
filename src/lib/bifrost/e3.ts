@@ -161,8 +161,6 @@ export async function discoverOpenAlex(input: {
     };
   }
 
-  // OpenAlex interprets * and ? as wildcard syntax. Natural-language questions
-  // often end in ?, so strip wildcard punctuation before sending the search.
   const searchText = question
     .replace(/[?*]/g, " ")
     .replace(/\s+/g, " ")
@@ -171,7 +169,7 @@ export async function discoverOpenAlex(input: {
 
   const params = new URLSearchParams({
     search: searchText,
-    per_page: String(Math.max(5, Math.min(input.perPage ?? 15, 25))),
+    per_page: String(Math.max(5, Math.min(input.perPage ?? 30, 50))),
     select: "id,doi,display_name,title,publication_year,authorships,cited_by_count,open_access,primary_topic,primary_location,best_oa_location"
   });
 
@@ -182,7 +180,7 @@ export async function discoverOpenAlex(input: {
     const response = await fetch(`${BIFROST_SOURCES.openAlex.worksApiUrl}?${params.toString()}`, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "MAINLAND-MYTHOS-BIFROST/0.3.1 (https://dragons-nest.vercel.app/bifrost)"
+        "User-Agent": "MAINLAND-MYTHOS-BIFROST/0.4.0 (https://dragons-nest.vercel.app/bifrost)"
       },
       next: { revalidate: 86400 }
     });
