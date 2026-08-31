@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t d">
+  <title id="t">BIFROST Download Sigil</title>
+  <desc id="d">Obsidian Norse rune medallion with a luminous rainbow bridge and download arrow.</desc>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#172432"/>
+      <stop offset="0.58" stop-color="#090d13"/>
+      <stop offset="1" stop-color="#020305"/>
+    </radialGradient>
+    <linearGradient id="bridge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ad79ff"/>
+      <stop offset="0.36" stop-color="#8cecff"/>
+      <stop offset="0.68" stop-color="#d8b86b"/>
+      <stop offset="1" stop-color="#8cecff"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#ffffff"/>
+      <stop offset="0.45" stop-color="#b9f4ff"/>
+      <stop offset="1" stop-color="#d8b86b"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <circle cx="128" cy="128" r="118" fill="url(#bg)" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+  <circle cx="128" cy="128" r="103" fill="none" stroke="#8cecff" stroke-opacity="0.18" stroke-width="1.5" stroke-dasharray="2 9"/>
+  <path d="M35 112 C78 72 177 72 221 112" fill="none" stroke="url(#bridge)" stroke-width="10" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M46 118 C85 87 171 87 210 118" fill="none" stroke="#ffffff" stroke-opacity="0.32" stroke-width="2"/>
+  <text x="128" y="126" text-anchor="middle" font-size="48" font-family="Georgia,serif" fill="#dff8ff" opacity="0.72" filter="url(#glow)">ᛉ</text>
+  <path d="M128 112 V171" stroke="url(#arrow)" stroke-width="12" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M100 150 L128 180 L156 150" fill="none" stroke="url(#arrow)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M82 195 H174" stroke="#d8b86b" stroke-width="8" stroke-linecap="round" opacity="0.92"/>
+  <circle cx="128" cy="128" r="118" fill="none" stroke="url(#bridge)" stroke-opacity="0.55" stroke-width="3" filter="url(#glow)"/>
+</svg>
