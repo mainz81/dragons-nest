@@ -46,6 +46,17 @@ type QueueItem = {
   waterloo: WaterlooRoute;
 };
 
+type TrustedWebRoute = {
+  id: string;
+  name: string;
+  domain: string;
+  kind: string;
+  priorityScore: number;
+  searchUrl: string;
+  note: string;
+  rationale: string;
+};
+
 type HuntResponse = {
   ok: boolean;
   phase?: string;
@@ -68,6 +79,11 @@ type HuntResponse = {
       status: "AVAILABLE" | "UNAVAILABLE";
       candidateCount: number;
     };
+    trustedWeb?: {
+      status: "AVAILABLE" | "UNAVAILABLE";
+      sourceCount: number;
+      mode: string;
+    };
   };
   channels?: {
     scholarlyJournals: {
@@ -82,6 +98,13 @@ type HuntResponse = {
       sourceStatus: "AVAILABLE" | "UNAVAILABLE";
       candidateCount: number;
       queue: QueueItem[];
+    };
+    trustedWeb?: {
+      label: string;
+      source: string;
+      candidateCount: number;
+      routes: TrustedWebRoute[];
+      guard: string;
     };
   };
   waterloo?: {
@@ -109,7 +132,7 @@ type HuntResponse = {
   };
 };
 
-type Channel = "scholarly" | "web";
+type Channel = "scholarly" | "web" | "trusted";
 
 const INTAKE_STORAGE_KEY = "mainland-mythos-bifrost-intake-v1";
 
@@ -213,7 +236,7 @@ export default function BifrostClient() {
     const manifest = {
       system: "MAINLAND MYTHOS",
       bridge: "BIFROST",
-      phase: "IV-E4A",
+      phase: "IV-E4B",
       exportedAt: new Date().toISOString(),
       researchIntent: question,
       count: intake.length,
@@ -246,14 +269,16 @@ export default function BifrostClient() {
     downloadText("bifrost-intake-manifest.json", JSON.stringify(manifest, null, 2), "application/json;charset=utf-8");
   }
 
-  const active = useMemo(() => {
-    if (!data?.channels) return undefined;
+  const activeQueue = useMemo(() => {
+    if (!data?.channels || channel === "trusted") return undefined;
     return channel === "scholarly" ? data.channels.scholarlyJournals : data.channels.webResults;
   }, [data, channel]);
 
+  const trustedRoutes = data?.channels?.trustedWeb?.routes ?? [];
   const intakeKeys = useMemo(() => new Set(intake.map(itemKey)), [intake]);
   const journalCount = data?.channels?.scholarlyJournals.queue.length ?? 0;
   const webCount = data?.channels?.webResults.queue.length ?? 0;
+  const trustedCount = trustedRoutes.length;
 
   return (
     <main className="min-h-screen bg-[#05070b] text-slate-100">
@@ -263,12 +288,12 @@ export default function BifrostClient() {
             <Image src="/bifrost-download.svg" alt="BIFROST sigil" width={48} height={48} className="h-12 w-12" priority />
             <div>
               <div className="text-xs tracking-[0.28em] text-amber-300">MAINLAND MYTHOS</div>
-              <div className="font-serif text-2xl">BIFRÖST / IV-E4A</div>
+              <div className="font-serif text-2xl">BIFRÖST / IV-E4B</div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-100">
-              HUGINN DEEP RESEARCH DISCOVERY
+              HUGINN THREE-LANE DISCOVERY
             </div>
             <div className="rounded-full border border-violet-300/20 bg-violet-300/5 px-3 py-2 text-xs text-violet-100">
               MÍMIR INTAKE {intake.length}
@@ -282,7 +307,7 @@ export default function BifrostClient() {
             Search wide. Rank hard. Carry only what matters.
           </h1>
           <p className="mt-6 max-w-4xl text-lg leading-8 text-slate-400">
-            BIFRÖST can now rank up to fifty crossings in each research channel when enough relevant material exists. Scholarly Journals is the formal publication lane; Huginn Research Web is currently an independent scholarly-web lens built from OpenAlex and public publisher/repository metadata. A separate trusted non-journal reference lane is the next clean expansion.
+            BIFRÖST now separates three different kinds of knowledge instead of mixing them together: formal scholarly publications, the OpenAlex research-web ecosystem, and a curated trusted non-journal lane for authoritative reference, government, university, public-health, data, archive, and research-institute sources.
           </p>
         </section>
 
@@ -307,13 +332,14 @@ export default function BifrostClient() {
                 <Metric label="DISCOVERED" value={data?.discovery?.combinedCandidateCount ?? "—"} />
                 <Metric label="JOURNAL RANKED" value={journalCount || "—"} />
                 <Metric label="RESEARCH WEB" value={webCount || "—"} />
+                <Metric label="TRUSTED WEB" value={trustedCount || "—"} />
                 <Metric label="MÍMIR INTAKE" value={intake.length} />
               </div>
 
               <div className="mt-6 grid gap-3">
                 <RealmStatus
                   name="HUGINN"
-                  detail={`Crossref ${data?.discovery?.crossref.status ?? "IDLE"} • OpenAlex ${data?.discovery?.openAlex.status ?? "IDLE"}`}
+                  detail={`Crossref ${data?.discovery?.crossref.status ?? "IDLE"} • OpenAlex ${data?.discovery?.openAlex.status ?? "IDLE"} • Trusted ${data?.discovery?.trustedWeb?.status ?? "IDLE"}`}
                   tone="cyan"
                 />
                 <RealmStatus
@@ -342,7 +368,7 @@ export default function BifrostClient() {
 
               {intake.length === 0 ? (
                 <p className="mt-4 text-sm leading-6 text-slate-500">
-                  Stage the strongest crossings from either channel. The dock persists in this browser between hunts.
+                  Stage the strongest scholarly crossings. The dock persists in this browser between hunts.
                 </p>
               ) : (
                 <div className="mt-4 space-y-2">
@@ -404,7 +430,7 @@ export default function BifrostClient() {
             </div>
 
             {data?.channels && (
-              <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/30 p-1.5">
+              <div className="mt-5 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-black/30 p-1.5 sm:grid-cols-3">
                 <ChannelButton
                   active={channel === "scholarly"}
                   onClick={() => setChannel("scholarly")}
@@ -419,12 +445,19 @@ export default function BifrostClient() {
                   count={webCount}
                   tone="cyan"
                 />
+                <ChannelButton
+                  active={channel === "trusted"}
+                  onClick={() => setChannel("trusted")}
+                  label="HUGINN TRUSTED WEB"
+                  count={trustedCount}
+                  tone="emerald"
+                />
               </div>
             )}
 
             {!data && (
               <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-10 text-center text-slate-500">
-                Launch the deep hunt. BIFRÖST can rank up to fifty results in each research channel.
+                Launch the deep hunt. BIFRÖST will separate journals, research-web material, and trusted non-journal source routes.
               </div>
             )}
 
@@ -434,19 +467,25 @@ export default function BifrostClient() {
               </div>
             )}
 
-            {active && (
+            {channel !== "trusted" && activeQueue && (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
                 <span>
-                  SOURCE: <span className="font-mono text-slate-300">{active.source.replaceAll("_", " ")}</span>
+                  SOURCE: <span className="font-mono text-slate-300">{activeQueue.source.replaceAll("_", " ")}</span>
                 </span>
                 <span>
-                  {active.candidateCount} CANDIDATES • {active.queue.length} RANKED CROSSINGS
+                  {activeQueue.candidateCount} CANDIDATES • {activeQueue.queue.length} RANKED CROSSINGS
                 </span>
               </div>
             )}
 
+            {channel === "trusted" && data?.channels?.trustedWeb && (
+              <div className="mt-4 rounded-xl border border-emerald-300/15 bg-emerald-300/[0.04] p-4 text-[11px] leading-5 text-slate-400">
+                <span className="font-mono text-emerald-200">CURATED AUTHORITATIVE REGISTRY</span> — {data.channels.trustedWeb.guard}
+              </div>
+            )}
+
             <div className="mt-5 space-y-4">
-              {active?.queue.map((item, index) => (
+              {channel !== "trusted" && activeQueue?.queue.map((item, index) => (
                 <ResultCard
                   key={`${item.id ?? item.title}-${index}`}
                   item={item}
@@ -456,9 +495,12 @@ export default function BifrostClient() {
                   onToggleStage={() => toggleIntake(item)}
                 />
               ))}
+              {channel === "trusted" && trustedRoutes.map((route, index) => (
+                <TrustedRouteCard key={route.id} route={route} index={index} />
+              ))}
             </div>
 
-            {active && active.queue.length === 0 && (
+            {channel !== "trusted" && activeQueue && activeQueue.queue.length === 0 && (
               <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-8 text-center text-slate-500">
                 No ranked results survived this channel’s current relevance gate. BIFRÖST does not treat that as evidence that nothing exists.
               </div>
@@ -496,7 +538,7 @@ export default function BifrostClient() {
         ) : null}
 
         <footer className="py-20 text-center text-sm text-slate-600">
-          ᛉ BIFRÖST • FIFTY-DEEP DISCOVERY • WATERLOO ROUTING • MÍMIR INTAKE • ZOTERO RIS BRIDGE
+          ᛉ BIFRÖST • THREE-LANE HUGINN DISCOVERY • WATERLOO ROUTING • MÍMIR INTAKE • ZOTERO RIS BRIDGE
         </footer>
       </div>
     </main>
@@ -643,6 +685,37 @@ function ResultCard({
   );
 }
 
+function TrustedRouteCard({ route, index }: { route: TrustedWebRoute; index: number }) {
+  return (
+    <article className="rounded-2xl border border-emerald-300/15 bg-black/30 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-xs text-emerald-300">
+          {String(index + 1).padStart(2, "0")} / TRUST {route.priorityScore}
+        </span>
+        <span className="rounded-full border border-emerald-300/15 bg-emerald-300/5 px-2 py-1 text-[10px] text-emerald-100">
+          {route.kind.replaceAll("_", " ")}
+        </span>
+      </div>
+      <h3 className="mt-3 font-serif text-xl md:text-2xl">{route.name}</h3>
+      <div className="mt-1 font-mono text-[11px] text-slate-600">{route.domain}</div>
+      <p className="mt-3 text-sm leading-6 text-slate-400">{route.note}</p>
+      <div className="mt-3 rounded-xl border border-emerald-300/10 bg-emerald-300/[0.03] p-3 text-xs text-emerald-100/75">
+        {route.rationale}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <a
+          href={route.searchUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-300/15"
+        >
+          SEARCH THIS TRUSTED SOURCE ↗
+        </a>
+      </div>
+    </article>
+  );
+}
+
 function ChannelButton({
   active,
   onClick,
@@ -654,11 +727,13 @@ function ChannelButton({
   onClick: () => void;
   label: string;
   count: number;
-  tone: "amber" | "cyan";
+  tone: "amber" | "cyan" | "emerald";
 }) {
   const activeClass = tone === "amber"
     ? "border-amber-300/30 bg-amber-300/10 text-amber-100"
-    : "border-cyan-300/30 bg-cyan-300/10 text-cyan-100";
+    : tone === "emerald"
+      ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+      : "border-cyan-300/30 bg-cyan-300/10 text-cyan-100";
   return (
     <button
       type="button"
