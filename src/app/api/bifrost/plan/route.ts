@@ -30,6 +30,22 @@ const bodySchema = z.object({
   demo: z.boolean().optional().default(false)
 });
 
+export async function GET() {
+  const plan = planAcquisition({
+    question: "How are children forming relationships with conversational AI?",
+    candidates: BIFROST_DEMO_CANDIDATES,
+    evidenceGapTags: ["longitudinal", "developmental", "measurement"],
+    maxAcquire: 5
+  });
+
+  return NextResponse.json({
+    ok: true,
+    mode: "IV_E1_SMOKE_TEST",
+    fixtureNotice: "All candidate titles in this smoke test are clearly labeled demonstration fixtures, not claims about real publications.",
+    plan
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const body = bodySchema.parse(await request.json());
