@@ -6,6 +6,7 @@ export type WaterlooRouteIntelligence = {
   holdingsStatus: "OPEN_ACCESS" | "UNVERIFIED_IN_OMNI";
   alumniRemoteScope: "SELECTED_ELECTRONIC_RESOURCES";
   omniTitleSearchUrl: string;
+  omniJournalSearchUrl?: string;
   omniDoiSearchUrl?: string;
   catalogueUrl: string;
   accessGatewayUrl: string;
@@ -29,12 +30,14 @@ function omniSearchUrl(term: string): string {
 export function buildWaterlooRoute(candidate: Candidate | PlannedCandidate): WaterlooRouteIntelligence {
   const doi = normalizeDoi(candidate.doi);
   const openAccess = candidate.accessStatus === "OPEN_ACCESS";
+  const publicationTitle = candidate.publicationTitle?.trim() || undefined;
 
   return {
     status: openAccess ? "OPEN_ACCESS_DIRECT" : "WATERLOO_CHECK_REQUIRED",
     holdingsStatus: openAccess ? "OPEN_ACCESS" : "UNVERIFIED_IN_OMNI",
     alumniRemoteScope: BIFROST_SOURCES.waterloo.alumniRemoteScope,
     omniTitleSearchUrl: omniSearchUrl(candidate.title),
+    omniJournalSearchUrl: publicationTitle ? omniSearchUrl(publicationTitle) : undefined,
     omniDoiSearchUrl: doi ? omniSearchUrl(doi) : undefined,
     catalogueUrl: BIFROST_SOURCES.waterloo.catalogueUrl,
     accessGatewayUrl: BIFROST_SOURCES.waterloo.remoteAccessInfoUrl,
@@ -42,8 +45,12 @@ export function buildWaterlooRoute(candidate: Candidate | PlannedCandidate): Wat
     usageGuidelinesUrl: BIFROST_SOURCES.waterloo.usageGuidelinesUrl,
     aiUsePolicyUrl: BIFROST_SOURCES.waterloo.aiUsePolicyUrl,
     researcherAction: openAccess
-      ? "Open the public source first. If you prefer the Waterloo record, verify the title or DOI in Omni."
-      : "Open the pre-filled Omni search, verify Waterloo availability, then authenticate in your own browser if the selected alumni resource permits remote access.",
+      ? publicationTitle
+        ? `Open the public source first. BIFRÖST has also prepared Waterloo Omni searches for the article and its journal, ${publicationTitle}.`
+        : "Open the public source first. BIFRÖST has also prepared a Waterloo Omni search with the article title already filled in."
+      : publicationTitle
+        ? `Open the pre-filled Waterloo Omni search for the article, DOI, or journal (${publicationTitle}), verify availability, then authenticate in your own browser if the selected alumni resource permits remote access.`
+        : "Open the pre-filled Waterloo Omni search with the article title already entered, verify availability, then authenticate in your own browser if the selected alumni resource permits remote access.",
     guard: openAccess
       ? "Open-access status does not itself establish AI reuse permission; inspect the source licence before full text enters an AI workflow."
       : "This is a Waterloo search route, not a holdings claim. Alumni remote access is limited to selected electronic resources, and the Omni record or provider must confirm availability and usage rights."
@@ -54,10 +61,15 @@ type OpenAlexAuthorship = {
   author?: { display_name?: string };
 };
 
+type OpenAlexSource = {
+  display_name?: string;
+};
+
 type OpenAlexLocation = {
   landing_page_url?: string;
   pdf_url?: string;
   is_oa?: boolean;
+  source?: OpenAlexSource;
 };
 
 type OpenAlexWork = {
@@ -102,6 +114,7 @@ function toOpenAlexCandidate(work: OpenAlexWork, evidenceGapTags: string[]): Can
 
   const doi = normalizeDoi(work.doi);
   const isOpen = Boolean(work.open_access?.is_oa);
+  const publicationTitle = work.primary_location?.source?.display_name?.trim() || undefined;
   const publicUrl =
     work.best_oa_location?.landing_page_url ||
     work.open_access?.oa_url ||
@@ -110,6 +123,7 @@ function toOpenAlexCandidate(work: OpenAlexWork, evidenceGapTags: string[]): Can
 
   const keywords = [
     work.primary_topic?.display_name,
+    publicationTitle,
     work.open_access?.oa_status ? `open access ${work.open_access.oa_status}` : undefined,
     typeof work.cited_by_count === "number" ? `citations ${work.cited_by_count}` : undefined
   ].filter((value): value is string => Boolean(value));
@@ -117,6 +131,7 @@ function toOpenAlexCandidate(work: OpenAlexWork, evidenceGapTags: string[]): Can
   return {
     id: work.id ? `openalex:${work.id.replace(/^https?:\/\/openalex\.org\//i, "")}` : undefined,
     title,
+    publicationTitle,
     authors: openAlexAuthors(work),
     year: work.publication_year,
     doi,
@@ -147,8 +162,9 @@ export async function discoverOpenAlex(input: {
   }
 
   const params = new URLSearchParams({
-    search: question,
-    per_page: String(Math.max(3, Math.min(input.perPage ?? 8, 12)))
+    search: question.slice(0, 500),
+    per_page: String(Math.max(5, Math.min(input.perPage ?? 15, 25))),
+    select: "id,doi,display_name,title,publication_year,authorships,cited_by_count,open_access,primary_topic,primary_location,best_oa_location"
   });
 
   const apiKey = process.env.BIFROST_OPENALEX_API_KEY?.trim();
@@ -158,18 +174,19 @@ export async function discoverOpenAlex(input: {
     const response = await fetch(`${BIFROST_SOURCES.openAlex.worksApiUrl}?${params.toString()}`, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "MAINLAND-MYTHOS-BIFROST/0.3 (https://dragons-nest.vercel.app/bifrost)"
+        "User-Agent": "MAINLAND-MYTHOS-BIFROST/0.3.1 (https://dragons-nest.vercel.app/bifrost)"
       },
       next: { revalidate: 86400 }
     });
 
     if (!response.ok) {
+      const detail = (await response.text()).slice(0, 180).replace(/\s+/g, " ");
       return {
         source: "OPENALEX",
         status: "UNAVAILABLE",
         candidateCount: 0,
         candidates: [],
-        warnings: [`OpenAlex web scout returned HTTP ${response.status}; Crossref discovery remains authoritative for this hunt.`]
+        warnings: [`OpenAlex web scout returned HTTP ${response.status}${detail ? ` (${detail})` : ""}; Crossref discovery remains available.`]
       };
     }
 
@@ -213,6 +230,7 @@ function richerCandidate(a: Candidate, b: Candidate): Candidate {
   return {
     ...other,
     ...base,
+    publicationTitle: base.publicationTitle ?? other.publicationTitle,
     doi: normalizeDoi(base.doi) ?? normalizeDoi(other.doi),
     authors: [...new Set([...(base.authors ?? []), ...(other.authors ?? [])])],
     keywords: [...new Set([...(base.keywords ?? []), ...(other.keywords ?? [])])],
