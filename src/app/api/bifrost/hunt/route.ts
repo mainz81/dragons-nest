@@ -15,7 +15,7 @@ const bodySchema = z.object({
   question: z.string().min(3).max(800),
   mimirHoldings: z.array(holdingSchema).max(500).optional(),
   maxAcquire: z.number().int().min(1).max(12).optional().default(5),
-  rowsPerQuery: z.number().int().min(2).max(15).optional().default(7)
+  rowsPerQuery: z.number().int().min(3).max(15).optional().default(8)
 });
 
 export const runtime = "nodejs";
@@ -37,6 +37,7 @@ export async function POST(request: Request) {
     }));
 
     const discovery = await discoverCrossref({
+      question: body.question,
       queries: discoveryQueries,
       rowsPerQuery: body.rowsPerQuery
     });
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       phase: "IV-E2",
-      version: "0.2.0",
+      version: "0.2.1",
       mode: "REAL_PUBLIC_SCHOLARLY_METADATA",
       discovery: {
         source: discovery.source,
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
       plan,
       warnings: [...discovery.warnings, ...plan.warnings],
       guard:
-        "Crossref results are real public bibliographic metadata. BIFROST has not verified Waterloo subscription availability, full-text rights, or AI-use permission unless explicitly represented by metadata; unknown rights remain held for review."
+        "Crossref results are real public bibliographic metadata filtered through question-level concept anchors. BIFROST has not verified Waterloo subscription availability, full-text rights, or AI-use permission unless explicitly represented by metadata; unknown rights remain held for review."
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
