@@ -148,7 +148,7 @@ export async function discoverOpenAlex(input: {
 
   const params = new URLSearchParams({
     search: question,
-    "per-page": String(Math.max(3, Math.min(input.perPage ?? 8, 12)))
+    per_page: String(Math.max(3, Math.min(input.perPage ?? 8, 12)))
   });
 
   const apiKey = process.env.BIFROST_OPENALEX_API_KEY?.trim();
