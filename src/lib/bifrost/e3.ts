@@ -161,8 +161,16 @@ export async function discoverOpenAlex(input: {
     };
   }
 
+  // OpenAlex interprets * and ? as wildcard syntax. Natural-language questions
+  // often end in ?, so strip wildcard punctuation before sending the search.
+  const searchText = question
+    .replace(/[?*]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+
   const params = new URLSearchParams({
-    search: question.slice(0, 500),
+    search: searchText,
     per_page: String(Math.max(5, Math.min(input.perPage ?? 15, 25))),
     select: "id,doi,display_name,title,publication_year,authorships,cited_by_count,open_access,primary_topic,primary_location,best_oa_location"
   });
