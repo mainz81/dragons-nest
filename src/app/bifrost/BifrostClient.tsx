@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 
 type PlanResponse = {
@@ -71,7 +72,7 @@ export default function BifrostClient() {
       <div className="mx-auto max-w-6xl px-6 py-8">
         <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/30 px-5 py-4 backdrop-blur">
           <div className="flex items-center gap-3">
-            <img src="/bifrost-download.svg" alt="BIFROST sigil" className="h-12 w-12" />
+            <Image src="/bifrost-download.svg" alt="BIFROST sigil" width={48} height={48} className="h-12 w-12" priority />
             <div>
               <div className="text-xs tracking-[0.28em] text-amber-300">MAINLAND MYTHOS</div>
               <div className="font-serif text-2xl">BIFRÖST / IV-E1</div>
@@ -107,7 +108,7 @@ export default function BifrostClient() {
               disabled={loading || question.trim().length < 3}
               className="mt-4 w-full rounded-2xl bg-gradient-to-r from-cyan-200 via-sky-200 to-amber-200 px-5 py-4 font-bold text-slate-950 transition hover:brightness-110 disabled:opacity-50"
             >
-              {loading ? "CROSSING BIFRÖST…" : "ᛉ LAUNCH LIBRARIAN'S HUNT"}
+              {loading ? "CROSSING BIFRÖST…" : "ᛉ LAUNCH LIBRARIAN’S HUNT"}
             </button>
 
             <div className="mt-6 grid grid-cols-3 gap-3 text-center">
@@ -118,7 +119,7 @@ export default function BifrostClient() {
 
             <div className="mt-6 rounded-2xl border border-white/10 bg-black/30 p-4 text-xs leading-6 text-slate-400">
               <div className="font-mono text-cyan-200">CREDENTIAL BOUNDARY</div>
-              BIFRÖST never receives WatIAM credentials. Waterloo authentication stays in the researcher's normal browser session.
+              BIFRÖST never receives WatIAM credentials. Waterloo authentication stays in the researcher’s normal browser session.
             </div>
           </div>
 
@@ -126,7 +127,7 @@ export default function BifrostClient() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-xs tracking-[0.22em] text-slate-500">ACQUISITION QUEUE</div>
-                <h2 className="mt-1 font-serif text-3xl">The Librarian's Hunt</h2>
+                <h2 className="mt-1 font-serif text-3xl">The Librarian’s Hunt</h2>
               </div>
               {data?.plan && (
                 <div className="rounded-full border border-emerald-300/20 bg-emerald-300/5 px-3 py-2 text-xs text-emerald-200">
