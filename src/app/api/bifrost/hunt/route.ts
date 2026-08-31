@@ -4,6 +4,7 @@ import { discoverCrossref } from "@/lib/bifrost/crossref";
 import { planAcquisition } from "@/lib/bifrost/engine";
 import { buildWaterlooRoute, discoverOpenAlex, mergeScholarlyCandidates } from "@/lib/bifrost/e3";
 import { detectEvidenceGaps } from "@/lib/bifrost/gap";
+import { buildTrustedWebRoutes } from "@/lib/bifrost/trusted-web";
 
 const holdingSchema = z.object({
   title: z.string().min(1),
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
       })
     ]);
 
+    const trustedWeb = buildTrustedWebRoutes(body.question, 30);
     const combinedCandidates = mergeScholarlyCandidates(crossref.candidates, openAlex.candidates);
     const scholarlyCandidates = crossref.candidates.filter((candidate) => Boolean(candidate.publicationTitle));
     const journalPool = scholarlyCandidates.length ? scholarlyCandidates : crossref.candidates;
@@ -98,9 +100,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      phase: "IV-E4A",
-      version: "0.4.0",
-      mode: "HUGINN_DUAL_CHANNEL_DEEP_DISCOVERY_PLUS_MIMIR_INTAKE",
+      phase: "IV-E4B",
+      version: "0.4.1",
+      mode: "HUGINN_THREE_LANE_DISCOVERY_PLUS_MIMIR_INTAKE",
       discovery: {
         source: "HUGINN",
         combinedCandidateCount: combinedCandidates.length,
@@ -113,6 +115,11 @@ export async function POST(request: Request) {
         openAlex: {
           status: openAlex.status,
           candidateCount: openAlex.candidateCount
+        },
+        trustedWeb: {
+          status: "AVAILABLE",
+          sourceCount: trustedWeb.length,
+          mode: "CURATED_AUTHORITATIVE_SEARCH_ROUTES"
         }
       },
       channels: {
@@ -128,6 +135,13 @@ export async function POST(request: Request) {
           sourceStatus: openAlex.status,
           candidateCount: webCandidates.length,
           queue: webPlan.queue
+        },
+        trustedWeb: {
+          label: "HUGINN TRUSTED WEB",
+          source: "CURATED_AUTHORITATIVE_REGISTRY",
+          candidateCount: trustedWeb.length,
+          routes: trustedWeb,
+          guard: "Trusted Web is a curated non-journal lane. These are ranked authoritative source gateways with the research question pre-filled, not claims that each destination already contains a relevant page. Wikipedia is intentionally excluded from this lane."
         }
       },
       waterloo: {
@@ -140,7 +154,7 @@ export async function POST(request: Request) {
       plan: mergedPlan,
       warnings,
       guard:
-        "Huginn ranks up to fifty crossings per channel when enough relevant metadata exists. Scholarly journals and the research-web lens remain separate discovery views. BIFRÖST creates pre-filled Waterloo Omni searches but does not claim Waterloo holdings or alumni entitlement until Omni confirms them."
+        "Huginn now separates formal scholarship, scholarly research-web discovery, and a curated trusted non-journal web lane. BIFRÖST creates pre-filled Waterloo Omni searches but does not claim Waterloo holdings or alumni entitlement until Omni confirms them. Trusted-web entries are authoritative search routes, not fabricated search results."
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -153,8 +167,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "BIFROST_IV_E4A_FAILURE",
-        message: error instanceof Error ? error.message : "Unknown IV-E4A error"
+        error: "BIFROST_IV_E4B_FAILURE",
+        message: error instanceof Error ? error.message : "Unknown IV-E4B error"
       },
       { status: 500 }
     );
