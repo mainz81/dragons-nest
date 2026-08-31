@@ -152,11 +152,8 @@ function candidatePassesAnchors(question: string, candidate: Candidate): boolean
   const childMatch = containsAny(body, CHILD_ANCHORS);
   const relationMatch = containsAny(body, RELATION_ANCHORS);
 
-  // AI remains a hard anchor when the question is explicitly about AI.
   if (questionHasAi && !aiMatch) return false;
 
-  // For multi-concept questions, require at least one additional conceptual anchor.
-  // Ranking handles the difference between a partial and a near-perfect match.
   const secondaryRequirements = [
     questionHasChild ? childMatch : undefined,
     questionHasRelation ? relationMatch : undefined
@@ -205,7 +202,7 @@ async function requestCrossref(url: string, retry = true): Promise<Response> {
   const response = await fetch(url, {
     headers: {
       Accept: "application/json",
-      "User-Agent": "MAINLAND-MYTHOS-BIFROST/0.3.1 (https://dragons-nest.vercel.app/bifrost)"
+      "User-Agent": "MAINLAND-MYTHOS-BIFROST/0.4.0 (https://dragons-nest.vercel.app/bifrost)"
     },
     next: { revalidate: 86400 }
   });
@@ -251,7 +248,7 @@ export async function discoverCrossref(input: {
   queries: Array<{ query: string; evidenceGapTags: string[] }>;
   rowsPerQuery?: number;
 }): Promise<CrossrefDiscovery> {
-  const rowsPerQuery = Math.max(5, Math.min(input.rowsPerQuery ?? 15, 25));
+  const rowsPerQuery = Math.max(5, Math.min(input.rowsPerQuery ?? 30, 50));
   const queries = input.queries.filter((entry) => entry.query.trim()).slice(0, 5);
   const warnings: string[] = [];
   const byKey = new Map<string, Candidate>();
