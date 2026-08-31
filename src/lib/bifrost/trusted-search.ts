@@ -313,11 +313,12 @@ export async function discoverTrustedWebPages(input: {
     };
   }
 
-  const groupSize = useSearx ? 10 : 8;
-  const maxGroups = useSearx ? 2 : 3;
-  const routeGroups = Array.from({ length: maxGroups }, (_, index) =>
-    routes.slice(index * groupSize, (index + 1) * groupSize)
-  ).filter((group) => group.length > 0);
+  // Private/managed SearXNG can efficiently search several trusted domains in one query.
+  // The no-key Bing RSS fallback is deliberately more surgical: search the top five
+  // authority-ranked domains individually so each feed can return real page-level hits.
+  const routeGroups = useSearx
+    ? [routes.slice(0, 10), routes.slice(10, 20)].filter((group) => group.length > 0)
+    : routes.slice(0, 5).map((route) => [route]);
 
   const searches = await Promise.all(
     routeGroups.map((group) => {
@@ -330,7 +331,7 @@ export async function discoverTrustedWebPages(input: {
   const results = rankResults(question, searches.map((search) => search.results), routes, maxResults);
 
   if (!configuredSearx) {
-    warnings.push("Trusted Web is using Bing RSS as a no-key personal-research fallback. Set BIFROST_SEARXNG_URL to move this lane to a private or managed MAINLAND MYTHOS SearXNG endpoint.");
+    warnings.push("Trusted Web is using Bing RSS as a no-key personal-research fallback with five source-specific searches. Set BIFROST_SEARXNG_URL to move this lane to a private or managed MAINLAND MYTHOS SearXNG endpoint.");
   }
 
   if (!results.length) {
