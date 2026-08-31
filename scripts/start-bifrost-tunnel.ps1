@@ -18,7 +18,9 @@ try {
 
 if (Get-Command cloudflared -ErrorAction SilentlyContinue) {
   Write-Host "Starting Cloudflare Quick Tunnel..." -ForegroundColor Cyan
-  Write-Host "Copy the generated https://*.trycloudflare.com URL. It becomes BIFROST_SEARXNG_URL in Vercel." -ForegroundColor Yellow
+  Write-Host "Copy the generated https://*.trycloudflare.com URL." -ForegroundColor Yellow
+  Write-Host "In Vercel it becomes BIFROST_RELAY_URL." -ForegroundColor Yellow
+  Write-Host "Use the SAME hidden token from the relay window as BIFROST_RELAY_TOKEN." -ForegroundColor Yellow
   Write-Host "Quick Tunnel URLs change when this process restarts." -ForegroundColor DarkGray
   Write-Host ""
   cloudflared tunnel --url "http://127.0.0.1:$Port"
@@ -26,7 +28,6 @@ if (Get-Command cloudflared -ErrorAction SilentlyContinue) {
 }
 
 Write-Host "cloudflared was not found." -ForegroundColor Yellow
-Write-Host "Cloudflare currently supports free Quick Tunnels with no account required." -ForegroundColor DarkGray
 Write-Host "Install cloudflared, then rerun this script." -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Manual tunnel command once installed:" -ForegroundColor Cyan
