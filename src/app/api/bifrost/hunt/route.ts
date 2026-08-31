@@ -102,6 +102,12 @@ export async function POST(request: Request) {
       ...mergedPlan.warnings
     ];
 
+    const trustedPageSource = trustedWeb.mode === "PAGE_LEVEL_SEARXNG"
+      ? "SEARXNG_TRUSTED_DOMAIN_FILTER"
+      : trustedWeb.mode === "PAGE_LEVEL_BING_RSS"
+        ? "BING_RSS_TRUSTED_DOMAIN_FILTER"
+        : "CURATED_AUTHORITATIVE_REGISTRY";
+
     return NextResponse.json({
       ok: true,
       phase: "IV-E4C",
@@ -146,7 +152,7 @@ export async function POST(request: Request) {
         },
         trustedWeb: {
           label: "HUGINN TRUSTED WEB",
-          source: trustedWeb.mode === "PAGE_LEVEL_SEARXNG" ? "SEARXNG_TRUSTED_DOMAIN_FILTER" : "CURATED_AUTHORITATIVE_REGISTRY",
+          source: trustedPageSource,
           sourceStatus: trustedWeb.status,
           mode: trustedWeb.mode,
           backend: trustedWeb.backend,
@@ -155,7 +161,7 @@ export async function POST(request: Request) {
           pageResults: trustedWeb.results,
           routes: trustedWeb.routes,
           guard: trustedWeb.resultCount
-            ? "Trusted Web now contains actual page-level search results returned by SearXNG and then filtered against BIFRÖST's curated authoritative-domain registry. Wikipedia and non-registry domains are rejected. Source authority is not the same as claim truth; open each page and inspect its evidence and date."
+            ? "Trusted Web now contains actual page-level search results returned by the active web-search backend and then filtered against BIFRÖST's curated authoritative-domain registry. Wikipedia and non-registry domains are rejected. Source authority is not the same as claim truth; open each page and inspect its evidence and date."
             : "Page-level trusted-web search was unavailable or returned no trusted-domain pages, so BIFRÖST has fallen back to ranked authoritative source gateways. No absence inference is permitted."
         }
       },
