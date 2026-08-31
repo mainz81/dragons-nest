@@ -57,6 +57,20 @@ type TrustedWebRoute = {
   rationale: string;
 };
 
+type TrustedWebPage = {
+  id: string;
+  title: string;
+  url: string;
+  snippet: string;
+  domain: string;
+  sourceName: string;
+  kind: string;
+  priorityScore: number;
+  engines: string[];
+  publishedDate?: string;
+  sourceSearchUrl: string;
+};
+
 type HuntResponse = {
   ok: boolean;
   phase?: string;
@@ -80,9 +94,13 @@ type HuntResponse = {
       candidateCount: number;
     };
     trustedWeb?: {
-      status: "AVAILABLE" | "UNAVAILABLE";
+      status: "AVAILABLE" | "DEGRADED" | "UNAVAILABLE";
       sourceCount: number;
+      pageResultCount: number;
+      queryCount: number;
       mode: string;
+      backend: string;
+      backendTrust: string;
     };
   };
   channels?: {
@@ -102,7 +120,12 @@ type HuntResponse = {
     trustedWeb?: {
       label: string;
       source: string;
+      sourceStatus: "AVAILABLE" | "DEGRADED" | "UNAVAILABLE";
+      mode: string;
+      backend: string;
+      backendTrust: string;
       candidateCount: number;
+      pageResults: TrustedWebPage[];
       routes: TrustedWebRoute[];
       guard: string;
     };
@@ -227,8 +250,11 @@ export default function BifrostClient() {
 
   function exportRis() {
     if (!intake.length) return;
-    const ris = intake.map(toRis).join("\n\n");
-    downloadText("bifrost-zotero-intake.ris", ris, "application/x-research-info-systems;charset=utf-8");
+    downloadText(
+      "bifrost-zotero-intake.ris",
+      intake.map(toRis).join("\n\n"),
+      "application/x-research-info-systems;charset=utf-8"
+    );
   }
 
   function exportManifest() {
@@ -236,7 +262,7 @@ export default function BifrostClient() {
     const manifest = {
       system: "MAINLAND MYTHOS",
       bridge: "BIFROST",
-      phase: "IV-E4B",
+      phase: "IV-E4C",
       exportedAt: new Date().toISOString(),
       researchIntent: question,
       count: intake.length,
@@ -274,11 +300,13 @@ export default function BifrostClient() {
     return channel === "scholarly" ? data.channels.scholarlyJournals : data.channels.webResults;
   }, [data, channel]);
 
-  const trustedRoutes = data?.channels?.trustedWeb?.routes ?? [];
+  const trustedChannel = data?.channels?.trustedWeb;
+  const trustedPages = trustedChannel?.pageResults ?? [];
+  const trustedRoutes = trustedChannel?.routes ?? [];
   const intakeKeys = useMemo(() => new Set(intake.map(itemKey)), [intake]);
   const journalCount = data?.channels?.scholarlyJournals.queue.length ?? 0;
   const webCount = data?.channels?.webResults.queue.length ?? 0;
-  const trustedCount = trustedRoutes.length;
+  const trustedCount = trustedPages.length || trustedRoutes.length;
 
   return (
     <main className="min-h-screen bg-[#05070b] text-slate-100">
@@ -288,12 +316,12 @@ export default function BifrostClient() {
             <Image src="/bifrost-download.svg" alt="BIFROST sigil" width={48} height={48} className="h-12 w-12" priority />
             <div>
               <div className="text-xs tracking-[0.28em] text-amber-300">MAINLAND MYTHOS</div>
-              <div className="font-serif text-2xl">BIFRÖST / IV-E4B</div>
+              <div className="font-serif text-2xl">BIFRÖST / IV-E4C</div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-100">
-              HUGINN THREE-LANE DISCOVERY
+              HUGINN THREE-LANE PAGE DISCOVERY
             </div>
             <div className="rounded-full border border-violet-300/20 bg-violet-300/5 px-3 py-2 text-xs text-violet-100">
               MÍMIR INTAKE {intake.length}
@@ -304,10 +332,10 @@ export default function BifrostClient() {
         <section className="py-16 md:py-20">
           <div className="text-xs tracking-[0.32em] text-amber-300">THE LIBRARIAN’S HUNT</div>
           <h1 className="mt-3 max-w-5xl font-serif text-6xl leading-none md:text-8xl">
-            Search wide. Rank hard. Carry only what matters.
+            Search wide. Rank hard. Cross the actual page.
           </h1>
           <p className="mt-6 max-w-4xl text-lg leading-8 text-slate-400">
-            BIFRÖST now separates three different kinds of knowledge instead of mixing them together: formal scholarly publications, the OpenAlex research-web ecosystem, and a curated trusted non-journal lane for authoritative reference, government, university, public-health, data, archive, and research-institute sources.
+            BIFRÖST now separates formal scholarship, the OpenAlex research-web ecosystem, and a trusted non-journal lane that searches for actual pages, then rejects anything outside the curated authority registry. Britannica, universities, governments, public-health bodies, archives, data institutions and research organizations can now surface as direct page-level crossings.
           </p>
         </section>
 
@@ -325,21 +353,21 @@ export default function BifrostClient() {
                 disabled={loading || question.trim().length < 3}
                 className="mt-4 w-full rounded-2xl bg-gradient-to-r from-cyan-200 via-sky-200 to-amber-200 px-5 py-4 font-bold text-slate-950 transition hover:brightness-110 disabled:opacity-50"
               >
-                {loading ? "HUGINN IS FLYING DEEP…" : "ᛉ LAUNCH 50-DEEP HUGINN + BIFRÖST"}
+                {loading ? "HUGINN IS FLYING ACROSS THREE SKIES…" : "ᛉ LAUNCH 50-DEEP HUGINN + BIFRÖST"}
               </button>
 
               <div className="mt-6 grid grid-cols-2 gap-3 text-center">
                 <Metric label="DISCOVERED" value={data?.discovery?.combinedCandidateCount ?? "—"} />
                 <Metric label="JOURNAL RANKED" value={journalCount || "—"} />
                 <Metric label="RESEARCH WEB" value={webCount || "—"} />
-                <Metric label="TRUSTED WEB" value={trustedCount || "—"} />
+                <Metric label="TRUSTED PAGES" value={trustedPages.length || "—"} />
                 <Metric label="MÍMIR INTAKE" value={intake.length} />
               </div>
 
               <div className="mt-6 grid gap-3">
                 <RealmStatus
                   name="HUGINN"
-                  detail={`Crossref ${data?.discovery?.crossref.status ?? "IDLE"} • OpenAlex ${data?.discovery?.openAlex.status ?? "IDLE"} • Trusted ${data?.discovery?.trustedWeb?.status ?? "IDLE"}`}
+                  detail={`Crossref ${data?.discovery?.crossref.status ?? "IDLE"} • OpenAlex ${data?.discovery?.openAlex.status ?? "IDLE"} • Trusted Pages ${data?.discovery?.trustedWeb?.status ?? "IDLE"}`}
                   tone="cyan"
                 />
                 <RealmStatus
@@ -348,6 +376,13 @@ export default function BifrostClient() {
                   tone="amber"
                 />
               </div>
+
+              {data?.discovery?.trustedWeb && (
+                <div className="mt-4 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.04] p-4 text-xs leading-6 text-slate-400">
+                  <div className="font-mono text-emerald-200">TRUSTED WEB BACKEND</div>
+                  {data.discovery.trustedWeb.mode.replaceAll("_", " ")} • {data.discovery.trustedWeb.pageResultCount} pages • {data.discovery.trustedWeb.backendTrust.replaceAll("_", " ")}
+                </div>
+              )}
 
               <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-xs leading-6 text-slate-400">
                 <div className="font-mono text-cyan-200">CREDENTIAL BOUNDARY</div>
@@ -431,33 +466,15 @@ export default function BifrostClient() {
 
             {data?.channels && (
               <div className="mt-5 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-black/30 p-1.5 sm:grid-cols-3">
-                <ChannelButton
-                  active={channel === "scholarly"}
-                  onClick={() => setChannel("scholarly")}
-                  label="SCHOLARLY JOURNALS"
-                  count={journalCount}
-                  tone="amber"
-                />
-                <ChannelButton
-                  active={channel === "web"}
-                  onClick={() => setChannel("web")}
-                  label="HUGINN RESEARCH WEB"
-                  count={webCount}
-                  tone="cyan"
-                />
-                <ChannelButton
-                  active={channel === "trusted"}
-                  onClick={() => setChannel("trusted")}
-                  label="HUGINN TRUSTED WEB"
-                  count={trustedCount}
-                  tone="emerald"
-                />
+                <ChannelButton active={channel === "scholarly"} onClick={() => setChannel("scholarly")} label="SCHOLARLY JOURNALS" count={journalCount} tone="amber" />
+                <ChannelButton active={channel === "web"} onClick={() => setChannel("web")} label="HUGINN RESEARCH WEB" count={webCount} tone="cyan" />
+                <ChannelButton active={channel === "trusted"} onClick={() => setChannel("trusted")} label="HUGINN TRUSTED WEB" count={trustedCount} tone="emerald" />
               </div>
             )}
 
             {!data && (
               <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-10 text-center text-slate-500">
-                Launch the deep hunt. BIFRÖST will separate journals, research-web material, and trusted non-journal source routes.
+                Launch the deep hunt. BIFRÖST will rank scholarship, research-web material, and actual trusted non-journal pages separately.
               </div>
             )}
 
@@ -469,18 +486,17 @@ export default function BifrostClient() {
 
             {channel !== "trusted" && activeQueue && (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-                <span>
-                  SOURCE: <span className="font-mono text-slate-300">{activeQueue.source.replaceAll("_", " ")}</span>
-                </span>
-                <span>
-                  {activeQueue.candidateCount} CANDIDATES • {activeQueue.queue.length} RANKED CROSSINGS
-                </span>
+                <span>SOURCE: <span className="font-mono text-slate-300">{activeQueue.source.replaceAll("_", " ")}</span></span>
+                <span>{activeQueue.candidateCount} CANDIDATES • {activeQueue.queue.length} RANKED CROSSINGS</span>
               </div>
             )}
 
-            {channel === "trusted" && data?.channels?.trustedWeb && (
+            {channel === "trusted" && trustedChannel && (
               <div className="mt-4 rounded-xl border border-emerald-300/15 bg-emerald-300/[0.04] p-4 text-[11px] leading-5 text-slate-400">
-                <span className="font-mono text-emerald-200">CURATED AUTHORITATIVE REGISTRY</span> — {data.channels.trustedWeb.guard}
+                <span className="font-mono text-emerald-200">
+                  {trustedPages.length ? "PAGE-LEVEL TRUSTED SEARCH" : "AUTHORITATIVE GATEWAY FALLBACK"}
+                </span>
+                {" — "}{trustedChannel.guard}
               </div>
             )}
 
@@ -495,10 +511,28 @@ export default function BifrostClient() {
                   onToggleStage={() => toggleIntake(item)}
                 />
               ))}
-              {channel === "trusted" && trustedRoutes.map((route, index) => (
+
+              {channel === "trusted" && trustedPages.map((page, index) => (
+                <TrustedPageCard key={page.id} page={page} index={index} />
+              ))}
+
+              {channel === "trusted" && trustedPages.length === 0 && trustedRoutes.map((route, index) => (
                 <TrustedRouteCard key={route.id} route={route} index={index} />
               ))}
             </div>
+
+            {channel === "trusted" && trustedPages.length > 0 && trustedRoutes.length > 0 && (
+              <details className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <summary className="cursor-pointer text-xs font-semibold tracking-wide text-emerald-200">
+                  BROWSE RANKED TRUSTED SOURCE GATEWAYS ({trustedRoutes.length})
+                </summary>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {trustedRoutes.slice(0, 12).map((route, index) => (
+                    <TrustedRouteCard key={`gateway-${route.id}`} route={route} index={index} compact />
+                  ))}
+                </div>
+              </details>
+            )}
 
             {channel !== "trusted" && activeQueue && activeQueue.queue.length === 0 && (
               <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-8 text-center text-slate-500">
@@ -538,20 +572,14 @@ export default function BifrostClient() {
         ) : null}
 
         <footer className="py-20 text-center text-sm text-slate-600">
-          ᛉ BIFRÖST • THREE-LANE HUGINN DISCOVERY • WATERLOO ROUTING • MÍMIR INTAKE • ZOTERO RIS BRIDGE
+          ᛉ BIFRÖST • THREE-LANE PAGE DISCOVERY • WATERLOO ROUTING • MÍMIR INTAKE • ZOTERO RIS BRIDGE
         </footer>
       </div>
     </main>
   );
 }
 
-function ResultCard({
-  item,
-  index,
-  channel,
-  staged,
-  onToggleStage
-}: {
+function ResultCard({ item, index, channel, staged, onToggleStage }: {
   item: QueueItem;
   index: number;
   channel: Channel;
@@ -566,33 +594,21 @@ function ResultCard({
         </span>
         <div className="flex flex-wrap gap-2">
           {staged && <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-1 text-[10px] text-violet-100">MÍMIR STAGED</span>}
-          <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-slate-400">
-            {item.downstreamMode.replaceAll("_", " ")}
-          </span>
-          <span
-            className={`rounded-full border px-2 py-1 text-[10px] ${
-              item.waterloo.holdingsStatus === "OPEN_ACCESS"
-                ? "border-emerald-300/20 bg-emerald-300/5 text-emerald-200"
-                : "border-amber-300/20 bg-amber-300/5 text-amber-200"
-            }`}
-          >
+          <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-slate-400">{item.downstreamMode.replaceAll("_", " ")}</span>
+          <span className={`rounded-full border px-2 py-1 text-[10px] ${item.waterloo.holdingsStatus === "OPEN_ACCESS" ? "border-emerald-300/20 bg-emerald-300/5 text-emerald-200" : "border-amber-300/20 bg-amber-300/5 text-amber-200"}`}>
             {item.waterloo.holdingsStatus.replaceAll("_", " ")}
           </span>
         </div>
       </div>
 
       <h3 className="mt-3 font-serif text-xl leading-7 md:text-2xl">{item.title}</h3>
-      <div className="mt-2 text-sm text-slate-500">
-        {item.authors?.slice(0, 4).join(", ") || "Authors unavailable"} • {item.year ?? "Year unknown"}
-      </div>
+      <div className="mt-2 text-sm text-slate-500">{item.authors?.slice(0, 4).join(", ") || "Authors unavailable"} • {item.year ?? "Year unknown"}</div>
       {item.publicationTitle && (
         <div className="mt-2 rounded-lg border border-amber-300/10 bg-amber-300/[0.03] px-3 py-2 text-xs text-amber-100/80">
           <span className="font-mono text-[10px] text-amber-300">JOURNAL / PUBLICATION</span> • {item.publicationTitle}
         </div>
       )}
-      <div className="mt-2 font-mono text-[11px] text-slate-600">
-        {item.normalizedDoi ? `DOI ${item.normalizedDoi}` : "DOI unavailable"} • {item.accessStatus ?? "ACCESS UNKNOWN"}
-      </div>
+      <div className="mt-2 font-mono text-[11px] text-slate-600">{item.normalizedDoi ? `DOI ${item.normalizedDoi}` : "DOI unavailable"} • {item.accessStatus ?? "ACCESS UNKNOWN"}</div>
 
       <div className="mt-4 grid grid-cols-5 gap-2 text-center text-[10px] text-slate-500">
         <Score label="TOPIC" value={item.scoreBreakdown.topicalRelevance} />
@@ -607,122 +623,83 @@ function ResultCard({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onToggleStage}
-          className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-            staged
-              ? "border-violet-300/35 bg-violet-300/15 text-violet-100 hover:bg-violet-300/20"
-              : "border-violet-300/20 bg-violet-300/5 text-violet-200 hover:bg-violet-300/10"
-          }`}
-        >
+        <button type="button" onClick={onToggleStage} className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${staged ? "border-violet-300/35 bg-violet-300/15 text-violet-100 hover:bg-violet-300/20" : "border-violet-300/20 bg-violet-300/5 text-violet-200 hover:bg-violet-300/10"}`}>
           {staged ? "REMOVE FROM MÍMIR ✓" : "QUEUE FOR MÍMIR +"}
         </button>
-        {item.waterloo.omniJournalSearchUrl && (
-          <a
-            href={item.waterloo.omniJournalSearchUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-xl border border-amber-300/40 bg-amber-300/15 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-300/20"
-            title={`Search Waterloo Omni with journal title: ${item.publicationTitle}`}
-          >
-            SEARCH JOURNAL IN WATERLOO ↗
-          </a>
-        )}
-        <a
-          href={item.waterloo.omniTitleSearchUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-xl border border-amber-300/20 bg-amber-300/5 px-3 py-2 text-xs text-amber-200 transition hover:bg-amber-300/10"
-        >
-          SEARCH ARTICLE IN WATERLOO ↗
-        </a>
-        {item.waterloo.omniDoiSearchUrl && (
-          <a
-            href={item.waterloo.omniDoiSearchUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-xl border border-violet-300/20 bg-violet-300/5 px-3 py-2 text-xs text-violet-200 transition hover:bg-violet-300/10"
-          >
-            CHECK DOI IN WATERLOO ↗
-          </a>
-        )}
-        {item.route.doiResolverUrl && (
-          <a
-            href={item.route.doiResolverUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-xl border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 text-xs text-cyan-200 transition hover:bg-cyan-300/10"
-          >
-            OPEN DOI ↗
-          </a>
-        )}
-        {item.route.directUrl && (
-          <a
-            href={item.route.directUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-xl border border-emerald-300/20 bg-emerald-300/5 px-3 py-2 text-xs text-emerald-200 transition hover:bg-emerald-300/10"
-          >
-            OPEN WEB SOURCE ↗
-          </a>
-        )}
+        {item.waterloo.omniJournalSearchUrl && <ActionLink href={item.waterloo.omniJournalSearchUrl} label="SEARCH JOURNAL IN WATERLOO ↗" tone="amberStrong" />}
+        <ActionLink href={item.waterloo.omniTitleSearchUrl} label="SEARCH ARTICLE IN WATERLOO ↗" tone="amber" />
+        {item.waterloo.omniDoiSearchUrl && <ActionLink href={item.waterloo.omniDoiSearchUrl} label="CHECK DOI IN WATERLOO ↗" tone="violet" />}
+        {item.route.doiResolverUrl && <ActionLink href={item.route.doiResolverUrl} label="OPEN DOI ↗" tone="cyan" />}
+        {item.route.directUrl && <ActionLink href={item.route.directUrl} label="OPEN WEB SOURCE ↗" tone="emerald" />}
       </div>
 
       <details className="mt-4 text-xs text-slate-500">
         <summary className="cursor-pointer font-mono text-slate-400">RIGHTS + ROUTE GUARD</summary>
         <p className="mt-2 leading-5">{item.waterloo.guard}</p>
         <div className="mt-2 flex flex-wrap gap-3">
-          <a className="text-violet-200 underline-offset-4 hover:underline" href={item.waterloo.aiUsePolicyUrl} target="_blank" rel="noreferrer">
-            Waterloo AI-use policy ↗
-          </a>
-          <a className="text-violet-200 underline-offset-4 hover:underline" href={item.waterloo.usageGuidelinesUrl} target="_blank" rel="noreferrer">
-            Electronic-resource guidelines ↗
-          </a>
+          <a className="text-violet-200 underline-offset-4 hover:underline" href={item.waterloo.aiUsePolicyUrl} target="_blank" rel="noreferrer">Waterloo AI-use policy ↗</a>
+          <a className="text-violet-200 underline-offset-4 hover:underline" href={item.waterloo.usageGuidelinesUrl} target="_blank" rel="noreferrer">Electronic-resource guidelines ↗</a>
         </div>
       </details>
     </article>
   );
 }
 
-function TrustedRouteCard({ route, index }: { route: TrustedWebRoute; index: number }) {
+function TrustedPageCard({ page, index }: { page: TrustedWebPage; index: number }) {
   return (
-    <article className="rounded-2xl border border-emerald-300/15 bg-black/30 p-5">
+    <article className="rounded-2xl border border-emerald-300/15 bg-black/30 p-5 shadow-lg shadow-emerald-950/5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-mono text-xs text-emerald-300">
-          {String(index + 1).padStart(2, "0")} / TRUST {route.priorityScore}
-        </span>
-        <span className="rounded-full border border-emerald-300/15 bg-emerald-300/5 px-2 py-1 text-[10px] text-emerald-100">
-          {route.kind.replaceAll("_", " ")}
-        </span>
+        <span className="font-mono text-xs text-emerald-300">{String(index + 1).padStart(2, "0")} / TRUST {page.priorityScore}</span>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full border border-emerald-300/15 bg-emerald-300/5 px-2 py-1 text-[10px] text-emerald-100">{page.kind.replaceAll("_", " ")}</span>
+          <span className="rounded-full border border-cyan-300/15 bg-cyan-300/5 px-2 py-1 text-[10px] text-cyan-100">PAGE VERIFIED DOMAIN</span>
+        </div>
       </div>
-      <h3 className="mt-3 font-serif text-xl md:text-2xl">{route.name}</h3>
-      <div className="mt-1 font-mono text-[11px] text-slate-600">{route.domain}</div>
-      <p className="mt-3 text-sm leading-6 text-slate-400">{route.note}</p>
-      <div className="mt-3 rounded-xl border border-emerald-300/10 bg-emerald-300/[0.03] p-3 text-xs text-emerald-100/75">
-        {route.rationale}
+      <h3 className="mt-3 font-serif text-xl leading-7 md:text-2xl">{page.title}</h3>
+      <div className="mt-2 text-sm text-emerald-100/70">{page.sourceName}</div>
+      <div className="mt-1 font-mono text-[11px] text-slate-600">{page.domain}{page.publishedDate ? ` • ${page.publishedDate}` : ""}</div>
+      {page.snippet && <p className="mt-3 text-sm leading-6 text-slate-400">{page.snippet}</p>}
+      <div className="mt-3 rounded-xl border border-emerald-300/10 bg-emerald-300/[0.03] p-3 text-[11px] leading-5 text-slate-500">
+        BIFRÖST accepted this page only after its hostname matched the curated trusted-domain registry. Authority is a provenance signal, not a truth score.
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <a
-          href={route.searchUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-300/15"
-        >
-          SEARCH THIS TRUSTED SOURCE ↗
-        </a>
+        <ActionLink href={page.url} label="OPEN TRUSTED PAGE ↗" tone="emeraldStrong" />
+        <ActionLink href={page.sourceSearchUrl} label="SEARCH THIS SOURCE ↗" tone="emerald" />
       </div>
+      {page.engines.length > 0 && <div className="mt-3 font-mono text-[10px] text-slate-700">DISCOVERED VIA {page.engines.join(" + ").toUpperCase()}</div>}
     </article>
   );
 }
 
-function ChannelButton({
-  active,
-  onClick,
-  label,
-  count,
-  tone
-}: {
+function TrustedRouteCard({ route, index, compact = false }: { route: TrustedWebRoute; index: number; compact?: boolean }) {
+  return (
+    <article className={`rounded-2xl border border-emerald-300/15 bg-black/30 ${compact ? "p-4" : "p-5"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-xs text-emerald-300">{String(index + 1).padStart(2, "0")} / TRUST {route.priorityScore}</span>
+        <span className="rounded-full border border-emerald-300/15 bg-emerald-300/5 px-2 py-1 text-[10px] text-emerald-100">{route.kind.replaceAll("_", " ")}</span>
+      </div>
+      <h3 className={`mt-3 font-serif ${compact ? "text-lg" : "text-xl md:text-2xl"}`}>{route.name}</h3>
+      <div className="mt-1 font-mono text-[11px] text-slate-600">{route.domain}</div>
+      {!compact && <p className="mt-3 text-sm leading-6 text-slate-400">{route.note}</p>}
+      {!compact && <div className="mt-3 rounded-xl border border-emerald-300/10 bg-emerald-300/[0.03] p-3 text-xs text-emerald-100/75">{route.rationale}</div>}
+      <div className="mt-4 flex flex-wrap gap-2"><ActionLink href={route.searchUrl} label="SEARCH THIS TRUSTED SOURCE ↗" tone="emerald" /></div>
+    </article>
+  );
+}
+
+function ActionLink({ href, label, tone }: { href: string; label: string; tone: "amberStrong" | "amber" | "violet" | "cyan" | "emerald" | "emeraldStrong" }) {
+  const cls = {
+    amberStrong: "border-amber-300/40 bg-amber-300/15 text-amber-100 hover:bg-amber-300/20",
+    amber: "border-amber-300/20 bg-amber-300/5 text-amber-200 hover:bg-amber-300/10",
+    violet: "border-violet-300/20 bg-violet-300/5 text-violet-200 hover:bg-violet-300/10",
+    cyan: "border-cyan-300/20 bg-cyan-300/5 text-cyan-200 hover:bg-cyan-300/10",
+    emerald: "border-emerald-300/20 bg-emerald-300/5 text-emerald-200 hover:bg-emerald-300/10",
+    emeraldStrong: "border-emerald-300/40 bg-emerald-300/15 text-emerald-100 hover:bg-emerald-300/20"
+  }[tone];
+  return <a href={href} target="_blank" rel="noreferrer" className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${cls}`}>{label}</a>;
+}
+
+function ChannelButton({ active, onClick, label, count, tone }: {
   active: boolean;
   onClick: () => void;
   label: string;
@@ -735,44 +712,21 @@ function ChannelButton({
       ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
       : "border-cyan-300/30 bg-cyan-300/10 text-cyan-100";
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-xl border px-3 py-3 text-xs font-semibold tracking-wide transition ${
-        active ? activeClass : "border-transparent text-slate-500 hover:bg-white/[0.04] hover:text-slate-300"
-      }`}
-    >
+    <button type="button" onClick={onClick} className={`rounded-xl border px-3 py-3 text-xs font-semibold tracking-wide transition ${active ? activeClass : "border-transparent text-slate-500 hover:bg-white/[0.04] hover:text-slate-300"}`}>
       {label} <span className="ml-1 font-mono">{count}</span>
     </button>
   );
 }
 
 function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-      <div className="font-serif text-2xl text-slate-100">{value}</div>
-      <div className="mt-1 text-[9px] tracking-wider text-slate-600">{label}</div>
-    </div>
-  );
+  return <div className="rounded-xl border border-white/10 bg-black/30 p-3"><div className="font-serif text-2xl text-slate-100">{value}</div><div className="mt-1 text-[9px] tracking-wider text-slate-600">{label}</div></div>;
 }
 
 function Score({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border border-white/5 bg-black/30 p-2">
-      <div className={value < 0 ? "text-rose-300" : "text-cyan-200"}>{value}</div>
-      <div className="mt-1">{label}</div>
-    </div>
-  );
+  return <div className="rounded-lg border border-white/5 bg-black/30 p-2"><div className={value < 0 ? "text-rose-300" : "text-cyan-200"}>{value}</div><div className="mt-1">{label}</div></div>;
 }
 
 function RealmStatus({ name, detail, tone }: { name: string; detail: string; tone: "cyan" | "amber" }) {
-  const cls = tone === "cyan"
-    ? "border-cyan-300/15 bg-cyan-300/5 text-cyan-100"
-    : "border-amber-300/15 bg-amber-300/5 text-amber-100";
-  return (
-    <div className={`rounded-2xl border p-4 ${cls}`}>
-      <div className="font-serif text-lg">{name}</div>
-      <div className="mt-1 font-mono text-[10px] text-slate-400">{detail}</div>
-    </div>
-  );
+  const cls = tone === "cyan" ? "border-cyan-300/15 bg-cyan-300/5 text-cyan-100" : "border-amber-300/15 bg-amber-300/5 text-amber-100";
+  return <div className={`rounded-2xl border p-4 ${cls}`}><div className="font-serif text-lg">{name}</div><div className="mt-1 font-mono text-[10px] text-slate-400">{detail}</div></div>;
 }
