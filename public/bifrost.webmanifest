@@ -1,0 +1,18 @@
+{
+  "name": "BIFROST — MAINLAND MYTHOS",
+  "short_name": "BIFROST",
+  "description": "The Scholarly Bridge of MAINLAND MYTHOS",
+  "start_url": "/bifrost.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#05070b",
+  "theme_color": "#08111a",
+  "icons": [
+    {
+      "src": "/bifrost-download.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
