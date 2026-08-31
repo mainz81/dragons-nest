@@ -15,8 +15,8 @@ const holdingSchema = z.object({
 const bodySchema = z.object({
   question: z.string().min(3).max(800),
   mimirHoldings: z.array(holdingSchema).max(500).optional(),
-  maxAcquire: z.number().int().min(1).max(12).optional().default(10),
-  rowsPerQuery: z.number().int().min(5).max(25).optional().default(15)
+  maxAcquire: z.number().int().min(1).max(50).optional().default(25),
+  rowsPerQuery: z.number().int().min(5).max(50).optional().default(30)
 });
 
 export const runtime = "nodejs";
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       discoverOpenAlex({
         question: body.question,
         evidenceGapTags: gap.needs.map((need) => need.label),
-        perPage: Math.min(body.rowsPerQuery, 25)
+        perPage: Math.min(body.rowsPerQuery, 50)
       })
     ]);
 
@@ -64,9 +64,6 @@ export async function POST(request: Request) {
     const scholarlyCandidates = crossref.candidates.filter((candidate) => Boolean(candidate.publicationTitle));
     const journalPool = scholarlyCandidates.length ? scholarlyCandidates : crossref.candidates;
 
-    // OpenAlex supplies an independent research-web lens. If it is unavailable,
-    // we still expose ranked publisher/DOI web routes from Crossref rather than
-    // pretending the web channel succeeded.
     const webCandidates = openAlex.status === "AVAILABLE"
       ? openAlex.candidates
       : crossref.candidates.filter((candidate) => Boolean(candidate.url));
@@ -101,9 +98,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      phase: "IV-E3.1",
-      version: "0.3.1",
-      mode: "HUGINN_DUAL_CHANNEL_DISCOVERY_PLUS_WATERLOO_ROUTE_INTELLIGENCE",
+      phase: "IV-E4A",
+      version: "0.4.0",
+      mode: "HUGINN_DUAL_CHANNEL_DEEP_DISCOVERY_PLUS_MIMIR_INTAKE",
       discovery: {
         source: "HUGINN",
         combinedCandidateCount: combinedCandidates.length,
@@ -126,7 +123,7 @@ export async function POST(request: Request) {
           queue: scholarlyPlan.queue
         },
         webResults: {
-          label: "HUGINN WEB RESULTS",
+          label: "HUGINN RESEARCH WEB",
           source: webSource,
           sourceStatus: openAlex.status,
           candidateCount: webCandidates.length,
@@ -143,7 +140,7 @@ export async function POST(request: Request) {
       plan: mergedPlan,
       warnings,
       guard:
-        "Huginn separates ranked scholarly-publication discovery from an independent research-web lens. BIFRÖST now creates pre-filled Waterloo Omni searches for the article title, DOI, and journal/publication title when metadata is available. Waterloo holdings and alumni entitlement remain unclaimed until Omni confirms them."
+        "Huginn ranks up to fifty crossings per channel when enough relevant metadata exists. Scholarly journals and the research-web lens remain separate discovery views. BIFRÖST creates pre-filled Waterloo Omni searches but does not claim Waterloo holdings or alumni entitlement until Omni confirms them."
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -156,8 +153,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "BIFROST_IV_E3_1_FAILURE",
-        message: error instanceof Error ? error.message : "Unknown IV-E3.1 error"
+        error: "BIFROST_IV_E4A_FAILURE",
+        message: error instanceof Error ? error.message : "Unknown IV-E4A error"
       },
       { status: 500 }
     );
