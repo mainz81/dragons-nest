@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bifrost:relay": "node scripts/bifrost-relay.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
